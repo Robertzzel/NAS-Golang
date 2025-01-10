@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Request struct {
@@ -20,17 +22,83 @@ type Request struct {
 	Headers map[string]string
 }
 
+const LOGIN_FROM = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Login Form</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .login-container {
+            background-color: #fff;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            width: 300px;
+            text-align: center;
+        }
+        .login-container input {
+            width: 90%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .login-container button {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h2>Login</h2>
+        <form action="/log" method="POST">
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
+    </div>
+</body>
+</html>
+`
+
 const (
 	HOST       = "localhost"
 	PORT       = "8080"
 	UPLOAD_DIR = "./uploads"
+	USERS_FILE = "./users.csv"
 )
 
+var activeCookies = make(map[string]string)
+
 func main() {
-	if _, err := os.Stat(UPLOAD_DIR); os.IsNotExist(err) {
-		if err := os.Mkdir(UPLOAD_DIR, 0755); err != nil {
-			fmt.Printf("Error creating upload directory: %v\n", err)
-			return
+	users, err := ParseUsersFile(USERS_FILE)
+	if err != nil {
+		return
+	}
+
+	for _, user := range users {
+		path := filepath.Join(UPLOAD_DIR, user[0])
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			if err := os.Mkdir(path, 0755); err != nil {
+				fmt.Printf("Error creating upload directory: %v\n", err)
+				return
+			}
 		}
 	}
 
@@ -121,15 +189,132 @@ func SendDirectoryAsZip(inputDirectory string, writer *bufio.ReadWriter) error {
 	return filepath.Walk(inputDirectory, walker)
 }
 
+func ParseFormBody(body string) map[string]string {
+	result := make(map[string]string)
+
+	for _, line := range strings.Split(body, "&") {
+		parts := strings.Split(line, "=")
+		if len(parts) == 2 {
+			result[parts[0]] = parts[1]
+		}
+	}
+
+	return result
+}
+
+func generateRandomString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	var seededRand = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	sb := strings.Builder{}
+	sb.Grow(length)
+	for i := 0; i < length; i++ {
+		sb.WriteByte(charset[seededRand.Intn(len(charset))])
+	}
+	return sb.String()
+}
+
+func ParseUsersFile(path string) ([][]string, error) {
+	file, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	text := string(file)
+	result := make([][]string, 0)
+
+	for _, line := range strings.Split(text, "\n") {
+		parts := strings.Split(line, ",")
+		if len(parts) == 2 {
+			result = append(result, parts)
+		}
+	}
+
+	return result, nil
+}
+
+func LoginRoute(request Request, writer *bufio.ReadWriter) {
+	if request.Method == "GET" {
+		_ = sendHTMLResponse(writer, "200 OK", []byte(LOGIN_FROM))
+		return
+	}
+
+	if request.Method == "POST" {
+		body := make([]byte, 1024)
+		bytes, _ := writer.Read(body)
+
+		form := ParseFormBody(string(body[:bytes]))
+		users, err := ParseUsersFile(USERS_FILE)
+		if err != nil {
+			return
+		}
+
+		found := false
+		for _, user := range users {
+			if user[0] == form["username"] && user[1] == form["password"] {
+				found = true
+			}
+		}
+
+		if found {
+			cookie := generateRandomString(150)
+			activeCookies[cookie] = form["username"]
+			_ = sendHTMLResponseWithHeaders(writer, "200 OK", []byte("success"), "Set-Cookie: "+"drive="+cookie)
+		} else {
+			_ = sendResponse(writer, "400 Bad Request", []byte("user not found"))
+		}
+
+		return
+	}
+
+}
+
+func GetCookieFromRequest(request Request) string {
+	cookies, cookiesExists := request.Headers["Cookie"]
+	if !cookiesExists {
+		return ""
+	}
+
+	neededCookie := ""
+	for _, cookie := range strings.Split(cookies, ";") {
+		cookieParts := strings.Split(strings.TrimSpace(cookie), "=")
+		if len(cookieParts) == 2 && cookieParts[0] == "drive" {
+			neededCookie = cookieParts[1]
+		}
+	}
+
+	return neededCookie
+}
+
 func defaultRoute(request Request, conn *bufio.ReadWriter) {
 	trimmedPath := GetUrlPath(request.Path)
-	path := filepath.Join(UPLOAD_DIR, trimmedPath)
+
 	urlParameters := GetUrlParameters(request.Path)
 
-	if strings.Contains(path, "..") {
+	if strings.Contains(trimmedPath, "..") {
 		_ = sendResponse(conn, "400 Bad Request", []byte("Bad Request"))
 		return
 	}
+
+	if trimmedPath == "/log" {
+		LoginRoute(request, conn)
+		return
+	}
+
+	neededCookie := GetCookieFromRequest(request)
+	if neededCookie == "" {
+		_ = sendResponse(conn, "400 Bad Request", []byte("User not logged in"))
+		return
+	}
+
+	user, isUser := activeCookies[neededCookie]
+	if !isUser {
+		_ = sendResponse(conn, "400 Bad Request", []byte("User not logged in"))
+		return
+	}
+
+	path := filepath.Join(UPLOAD_DIR, user, trimmedPath)
+
 	info, err := os.Stat(path)
 	if err != nil {
 		_ = sendResponse(conn, "400 Bad Request", []byte("Bad Request"))
@@ -137,7 +322,6 @@ func defaultRoute(request Request, conn *bufio.ReadWriter) {
 	}
 
 	toDownload, toDownloadExists := urlParameters["download"]
-
 	if info.IsDir() && toDownloadExists && toDownload == "true" {
 		if err := SendDirectoryAsZip(path, conn); err != nil {
 			_ = sendResponse(conn, "500 Server Error", []byte("cannot send directory"+err.Error()))
@@ -189,7 +373,7 @@ func SendDirectoryStructure(conn *bufio.ReadWriter, path, trimmedUtlPath string)
 		return
 	}
 
-	body := "<table>"
+	body := "<table style=\"border: 1px solid black;\">"
 	body += "<tr><th>Nume</th><th>Marime</th><th>ACCES</th><th>DOWNLOAD</th></tr>"
 	for _, e := range entries {
 		body += "<tr>"
@@ -230,6 +414,34 @@ func sendResponse(conn *bufio.ReadWriter, status string, body []byte) error {
 	header := fmt.Sprintf(
 		"HTTP/1.1 %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n",
 		status, len(body),
+	)
+	if _, err := conn.Write([]byte(header)); err != nil {
+		return err
+	}
+	if _, err := conn.Write(body); err != nil {
+		return err
+	}
+	return nil
+}
+
+func sendHTMLResponse(conn *bufio.ReadWriter, status string, body []byte) error {
+	header := fmt.Sprintf(
+		"HTTP/1.1 %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n",
+		status, len(body),
+	)
+	if _, err := conn.Write([]byte(header)); err != nil {
+		return err
+	}
+	if _, err := conn.Write(body); err != nil {
+		return err
+	}
+	return nil
+}
+
+func sendHTMLResponseWithHeaders(conn *bufio.ReadWriter, status string, body []byte, headers string) error {
+	header := fmt.Sprintf(
+		"HTTP/1.1 %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\n%s\r\n",
+		status, len(body), headers,
 	)
 	if _, err := conn.Write([]byte(header)); err != nil {
 		return err
