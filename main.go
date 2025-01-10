@@ -65,6 +65,7 @@ func main() {
 }
 
 func GetUrlPath(url string) string { return strings.Split(url, "?")[0] }
+
 func GetUrlParameters(url string) map[string]string {
 	result := make(map[string]string)
 
@@ -121,8 +122,8 @@ func SendDirectoryAsZip(inputDirectory string, writer *bufio.ReadWriter) error {
 }
 
 func defaultRoute(request Request, conn *bufio.ReadWriter) {
-	path := GetUrlPath(request.Path)
-	path = filepath.Join(UPLOAD_DIR, path)
+	trimmedPath := GetUrlPath(request.Path)
+	path := filepath.Join(UPLOAD_DIR, trimmedPath)
 	urlParameters := GetUrlParameters(request.Path)
 
 	if strings.Contains(path, "..") {
@@ -145,7 +146,7 @@ func defaultRoute(request Request, conn *bufio.ReadWriter) {
 		return
 	}
 	if info.IsDir() && (toDownloadExists == false || toDownload == "false") {
-		SendDirectoryStructure(conn, path, path)
+		SendDirectoryStructure(conn, path, trimmedPath)
 		return
 	}
 
@@ -189,6 +190,7 @@ func SendDirectoryStructure(conn *bufio.ReadWriter, path, trimmedUtlPath string)
 	}
 
 	body := "<table>"
+	body += "<tr><th>Nume</th><th>Marime</th><th>ACCES</th><th>DOWNLOAD</th></tr>"
 	for _, e := range entries {
 		body += "<tr>"
 
@@ -206,13 +208,14 @@ func SendDirectoryStructure(conn *bufio.ReadWriter, path, trimmedUtlPath string)
 		}
 
 		if info.IsDir() {
-			body += "<td>-</td>"
+			body += "<td>-</td>" // no size
+			body += fmt.Sprintf("<td><form method=\"get\" action=\"%s\"><button>ACCESS</button></form></td>", downUrl)
 			body += fmt.Sprintf("<td><a href=\"%s\">DOWNLOAD</a></td>", fmt.Sprintf("%s?download=true", downUrl))
 		} else {
 			body += fmt.Sprintf("<td>%d</td>", info.Size())
+			body += "<td>-</td>"
+			body += fmt.Sprintf("<td><form method=\"get\" action=\"%s\"><button>DOWNLOAD</button></form></td>", downUrl)
 		}
-
-		body += fmt.Sprintf("<td><form method=\"get\" action=\"%s\"><button>ACCESS</button></form></td>", downUrl)
 
 		body += "</tr>"
 	}
