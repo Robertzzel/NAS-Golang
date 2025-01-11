@@ -54,47 +54,106 @@ func sendHTMLResponseWithHeaders(conn *bufio.ReadWriter, status string, body []b
 	return nil
 }
 
-func SendDirectoryStructure(conn *bufio.ReadWriter, path, trimmedUtlPath string) {
-	htmlPage := "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><meta http-equiv=\"X-UA-Compatible\" content=\"ie=edge\"><title>HTML 5 Boilerplate</title></head><body><%BODY%></body></html>"
-
+func CreateDirectoryTable(path, urlPath string) (string, error) {
 	entries, err := os.ReadDir(path)
 	if err != nil {
-		_ = sendResponse(conn, "400 Bad Request", []byte("Bad Request"))
-		return
+		return "", nil
 	}
 
 	body := "<table style=\"border: 1px solid black;\">"
 	body += "<tr><th>Nume</th><th>Marime</th><th>ACCES</th><th>DOWNLOAD</th></tr>"
 	for _, e := range entries {
-		body += "<tr>"
-
-		body += fmt.Sprintf("<td>%s</td>", e.Name())
-
-		info, err := e.Info()
-		if err != nil {
-			body += "</tr>"
-			continue
-		}
-
-		downUrl := fmt.Sprintf("%s/%s", trimmedUtlPath, e.Name())
-		if strings.HasPrefix(downUrl, "//") {
-			downUrl = downUrl[1:]
-		}
-
-		if info.IsDir() {
-			body += "<td>-</td>" // no size
-			body += fmt.Sprintf("<td><a href=\"/display?path=%s\">ACCES</a></td>", downUrl)
-			body += fmt.Sprintf("<td><a href=\"%s\">DOWNLOAD</a></td>", fmt.Sprintf("/download?path=%s", downUrl))
-		} else {
-			body += fmt.Sprintf("<td>%d</td>", info.Size())
-			body += "<td>-</td>"
-			body += fmt.Sprintf("<td><a href=\"%s\">DOWNLOAD</a></td>", fmt.Sprintf("/download?path=%s", downUrl))
-		}
-
-		body += "</tr>"
+		body += CreateTableRowFromEntry(e, urlPath)
 	}
 	body += "</table>"
-	body += fmt.Sprintf("<a href=\"/display?path=%s\">BACK</a>", filepath.Dir(trimmedUtlPath))
+	return body, nil
+}
+
+func CreateTableRowFromEntry(file os.DirEntry, dirName string) string {
+	body := "<tr>"
+	body += fmt.Sprintf("<td>%s</td>", file.Name())
+
+	downUrl := fmt.Sprintf("%s/%s", dirName, file.Name())
+	if strings.HasPrefix(downUrl, "//") {
+		downUrl = downUrl[1:]
+	}
+
+	info, err := file.Info()
+	if err != nil {
+		body += "</tr>"
+		return body
+	}
+
+	if info.IsDir() {
+		body += "<td>-</td>" // no size
+		body += fmt.Sprintf("<td><a href=\"/display?path=%s\">ACCES</a></td>", downUrl)
+		body += fmt.Sprintf("<td><a href=\"%s\">DOWNLOAD</a></td>", fmt.Sprintf("/download?path=%s", downUrl))
+	} else {
+		body += fmt.Sprintf("<td>%s</td>", formatBytes(uint64(info.Size())))
+		body += "<td>-</td>"
+		body += fmt.Sprintf("<td><a href=\"%s\">DOWNLOAD</a></td>", fmt.Sprintf("/download?path=%s", downUrl))
+	}
+
+	body += "</tr>"
+	return body
+}
+
+func formatBytes(bytes uint64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+		TB = GB * 1024
+		PB = TB * 1024
+	)
+
+	switch {
+	case bytes >= PB:
+		return fmt.Sprintf("%.2f PB", float64(bytes)/float64(PB))
+	case bytes >= TB:
+		return fmt.Sprintf("%.2f TB", float64(bytes)/float64(TB))
+	case bytes >= GB:
+		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(GB))
+	case bytes >= MB:
+		return fmt.Sprintf("%.2f MB", float64(bytes)/float64(MB))
+	case bytes >= KB:
+		return fmt.Sprintf("%.2f KB", float64(bytes)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
+func GetDirectorySize(dir string) (int64, error) {
+	var size int64
+	err := filepath.Walk(dir, func(path string, f os.FileInfo, err error) error {
+		if !f.IsDir() {
+			size += f.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return size, nil
+}
+
+func SendDirectoryStructure(conn *bufio.ReadWriter, path string, urlPath string) {
+	htmlPage := "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><meta http-equiv=\"X-UA-Compatible\" content=\"ie=edge\"><title>HTML 5 Boilerplate</title></head><body><%BODY%></body></html>"
+
+	body, err := CreateDirectoryTable(path, urlPath)
+	if err != nil {
+		_ = sendResponse(conn, "500 Server Erro", []byte("cannot display directory table"))
+		return
+	}
+
+	body += fmt.Sprintf("<a href=\"/display?path=%s\">BACK</a>", filepath.Dir(urlPath))
+
+	size, err := GetDirectorySize(UPLOAD_DIR)
+	if err == nil {
+		body += fmt.Sprintf("<p>Remaining memory: %s </p>", formatBytes(uint64(size)))
+	} else {
+		body += fmt.Sprintf("<p>Cannot display size: %s </p>", err.Error())
+	}
 
 	htmlPage = strings.ReplaceAll(htmlPage, "<%BODY%>", body)
 	_, _ = conn.WriteString(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n", len(htmlPage)))

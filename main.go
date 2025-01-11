@@ -2,10 +2,11 @@ package main
 
 import (
 	"bufio"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,34 +14,13 @@ import (
 )
 
 const (
-	HOST       = "localhost"
-	PORT       = "8080"
-	UPLOAD_DIR = "./uploads"
-	USERS_FILE = "./users.csv"
+	HOST             = "localhost"
+	PORT             = "8080"
+	UPLOAD_DIR       = "./uploads"
+	USERS_FILE       = "./users.csv"
+	CERTIFICATE_FILE = ""
+	KEY_FILE         = ""
 )
-
-type Cookie struct {
-	username string
-	value    string
-	expires  time.Time
-}
-
-var existingCookies = make([]Cookie, 0)
-
-func GetCookie(activeCookies []Cookie, request *Request) (*Cookie, error) {
-	neededCookieValue := GetCookieValueFromRequest(request, "drive")
-	if neededCookieValue == "" {
-		return nil, errors.New("cookie not found")
-	}
-
-	for _, cookie := range activeCookies {
-		if cookie.value == neededCookieValue && cookie.expires.After(time.Now()) {
-			return &cookie, nil
-		}
-	}
-
-	return nil, errors.New("cookie not found")
-}
 
 func main() {
 	users, err := ParseUsersFile(USERS_FILE)
@@ -58,7 +38,14 @@ func main() {
 		}
 	}
 
-	listener, err := net.Listen("tcp", HOST+":"+PORT)
+	cert, err := tls.LoadX509KeyPair(CERTIFICATE_FILE, KEY_FILE)
+	if err != nil {
+		log.Fatal("Error loading certificate. ", err)
+	}
+
+	tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}}
+
+	listener, err := tls.Listen("tcp", HOST+":"+PORT, tlsCfg)
 	if err != nil {
 		return
 	}
@@ -85,6 +72,29 @@ func main() {
 		_ = readWriter.Flush()
 		_ = conn.Close()
 	}
+}
+
+type Cookie struct {
+	username string
+	value    string
+	expires  time.Time
+}
+
+var existingCookies = make([]Cookie, 0)
+
+func GetCookie(activeCookies []Cookie, request *Request) (*Cookie, error) {
+	neededCookieValue := GetCookieValueFromRequest(request, "drive")
+	if neededCookieValue == "" {
+		return nil, errors.New("cookie not found")
+	}
+
+	for _, cookie := range activeCookies {
+		if cookie.value == neededCookieValue && cookie.expires.After(time.Now()) {
+			return &cookie, nil
+		}
+	}
+
+	return nil, errors.New("cookie not found")
 }
 
 func ParseFormBody(body string) map[string]string {
