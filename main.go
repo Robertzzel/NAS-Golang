@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
+	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strings"
@@ -230,4 +233,81 @@ func handleRequest(request *Request, conn *bufio.ReadWriter) {
 		DisplayRoute(request, conn)
 		return
 	}
+
+	if urlPath == "/upload" {
+		UploadRoute(request, conn)
+		return
+	}
+}
+
+func UploadRoute(request *Request, conn *bufio.ReadWriter) {
+	cookie, err := GetCookie(existingCookies, request)
+	if err != nil {
+		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
+		return
+	}
+
+	urlParameters := GetUrlParameters(request)
+
+	parameterPath, pathExists := urlParameters["path"]
+	if !pathExists || strings.Contains(parameterPath, "..") {
+		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
+		return
+	}
+
+	path := filepath.Join(UPLOAD_DIR, cookie.username, parameterPath)
+	handleMultipartBody(conn.Reader, request.Headers["Content-Type"], path)
+}
+
+func handleMultipartBody(body *bufio.Reader, contentType string, base string) error {
+	// Extract the boundary from the Content-Type header
+	const boundaryPrefix = "boundary="
+	boundaryIndex := strings.Index(contentType, boundaryPrefix)
+	if boundaryIndex == -1 {
+		return fmt.Errorf("no boundary found in Content-Type")
+	}
+	boundary := contentType[boundaryIndex+len(boundaryPrefix):]
+
+	// Create a multipart reader
+	mr := multipart.NewReader(body, boundary)
+
+	// Iterate through each part
+	for {
+		part, err := mr.NextPart()
+		if err == io.EOF {
+			// No more parts
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("error reading part: %v", err)
+		}
+
+		// Process each part
+		if part.FileName() != "" {
+			// This part is a file
+			fmt.Printf("Receiving file: %s\n", part.FileName())
+
+			// Create a destination file
+			fileName := filepath.Join(base, part.FileName())
+			dst, err := os.Create(fileName)
+			if err != nil {
+				return fmt.Errorf("error creating file: %v", err)
+			}
+			defer dst.Close()
+
+			// Copy the file content to the destination
+			_, err = io.Copy(dst, part)
+			if err != nil {
+				return fmt.Errorf("error saving file: %v", err)
+			}
+			fmt.Printf("Saved file: %s\n", part.FileName())
+		} else {
+			// This part is a field
+			buf := new(bytes.Buffer)
+			buf.ReadFrom(part)
+			fmt.Printf("Field: %s, Value: %s\n", part.FormName(), buf.String())
+		}
+	}
+
+	return nil
 }

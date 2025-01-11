@@ -60,12 +60,12 @@ func CreateDirectoryTable(path, urlPath string) (string, error) {
 		return "", nil
 	}
 
-	body := "<table style=\"border: 1px solid black;\">"
-	body += "<tr><th>Nume</th><th>Marime</th><th>ACCES</th><th>DOWNLOAD</th></tr>"
+	body := "<table class=\"table\">"
+	body += "<thead><tr><th>Nume</th><th>Marime</th><th>ACCES</th><th>DOWNLOAD</th></tr></thead><tbody>"
 	for _, e := range entries {
 		body += CreateTableRowFromEntry(e, urlPath)
 	}
-	body += "</table>"
+	body += "</tbody></table>"
 	return body, nil
 }
 
@@ -138,8 +138,6 @@ func GetDirectorySize(dir string) (int64, error) {
 }
 
 func SendDirectoryStructure(conn *bufio.ReadWriter, path string, urlPath string) {
-	htmlPage := "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><meta http-equiv=\"X-UA-Compatible\" content=\"ie=edge\"><title>HTML 5 Boilerplate</title></head><body><%BODY%></body></html>"
-
 	body, err := CreateDirectoryTable(path, urlPath)
 	if err != nil {
 		_ = sendResponse(conn, "500 Server Erro", []byte("cannot display directory table"))
@@ -150,12 +148,16 @@ func SendDirectoryStructure(conn *bufio.ReadWriter, path string, urlPath string)
 
 	size, err := GetDirectorySize(UPLOAD_DIR)
 	if err == nil {
-		body += fmt.Sprintf("<p>Remaining memory: %s </p>", formatBytes(uint64(size)))
+		body += fmt.Sprintf("<p>Occupied memory: %s </p>", formatBytes(uint64(size)))
 	} else {
 		body += fmt.Sprintf("<p>Cannot display size: %s </p>", err.Error())
 	}
 
-	htmlPage = strings.ReplaceAll(htmlPage, "<%BODY%>", body)
+	body += fmt.Sprintf(`<form enctype="multipart/form-data" action="/upload?path=%s" method="post"><label for="files">Select files:</label>
+  <input type="file" id="files" name="files"  multiple><br><br>
+  <input type="submit"></form>`, urlPath)
+
+	htmlPage := strings.ReplaceAll(TABLE_PAGE, "<%BODY%>", body)
 	_, _ = conn.WriteString(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n", len(htmlPage)))
 	_, _ = conn.WriteString(htmlPage)
 }
@@ -177,6 +179,7 @@ func SendFile(conn *bufio.ReadWriter, path string) {
 
 	_, _ = conn.WriteString("HTTP/1.1 200 OK\r\n")
 	_, _ = conn.WriteString("Content-Type: application/octet-stream\r\n")
+	_, _ = conn.WriteString(fmt.Sprintf("Content-Disposition: attachment; filename=\"%s\"\r\n", filepath.Base(file.Name())))
 	_, _ = conn.WriteString("Content-Length: " + strconv.FormatInt(fileSize, 10) + "\r\n\r\n")
 
 	_ = conn.Flush()
