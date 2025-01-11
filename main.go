@@ -2,18 +2,12 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/tls"
-	"errors"
 	"fmt"
-	"io"
 	"log"
-	"math/rand"
-	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 const (
@@ -24,6 +18,8 @@ const (
 	CERTIFICATE_FILE = "./cert.pem"
 	KEY_FILE         = "./key.pem"
 )
+
+var existingCookies = make([]Cookie, 0)
 
 func main() {
 	users, err := ParseUsersFile(USERS_FILE)
@@ -62,6 +58,7 @@ func main() {
 			continue
 		}
 
+		fmt.Printf("Accepted connection from %s\n", conn.RemoteAddr())
 		readWriter := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 		request, err := ParseRequest(readWriter)
@@ -74,134 +71,6 @@ func main() {
 
 		_ = readWriter.Flush()
 		_ = conn.Close()
-	}
-}
-
-type Cookie struct {
-	username string
-	value    string
-	expires  time.Time
-}
-
-var existingCookies = make([]Cookie, 0)
-
-func GetCookie(activeCookies []Cookie, request *Request) (*Cookie, error) {
-	neededCookieValue := GetCookieValueFromRequest(request, "drive")
-	if neededCookieValue == "" {
-		return nil, errors.New("cookie not found")
-	}
-
-	for _, cookie := range activeCookies {
-		if cookie.value == neededCookieValue && cookie.expires.After(time.Now()) {
-			return &cookie, nil
-		}
-	}
-
-	return nil, errors.New("cookie not found")
-}
-
-func ParseFormBody(body string) map[string]string {
-	result := make(map[string]string)
-
-	for _, line := range strings.Split(body, "&") {
-		parts := strings.Split(line, "=")
-		if len(parts) == 2 {
-			result[parts[0]] = parts[1]
-		}
-	}
-
-	return result
-}
-
-func generateRandomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	var seededRand = rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	sb := strings.Builder{}
-	sb.Grow(length)
-	for i := 0; i < length; i++ {
-		sb.WriteByte(charset[seededRand.Intn(len(charset))])
-	}
-	return sb.String()
-}
-
-func ParseUsersFile(path string) ([][]string, error) {
-	file, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	text := string(file)
-	result := make([][]string, 0)
-
-	for _, line := range strings.Split(text, "\n") {
-		parts := strings.Split(line, ",")
-		if len(parts) == 2 {
-			result = append(result, parts)
-		}
-	}
-
-	return result, nil
-}
-
-func DisplayRoute(request *Request, conn *bufio.ReadWriter) {
-	cookie, err := GetCookie(existingCookies, request)
-	if err != nil {
-		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
-		return
-	}
-
-	urlParameters := GetUrlParameters(request)
-
-	parameterPath, pathExists := urlParameters["path"]
-	if !pathExists || strings.Contains(parameterPath, "..") {
-		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
-		return
-	}
-
-	path := filepath.Join(UPLOAD_DIR, cookie.username, parameterPath)
-
-	info, err := os.Stat(path)
-	if err != nil {
-		_ = sendResponse(conn, "400 Bad Request", []byte("Bad Request"))
-		return
-	}
-
-	if !info.IsDir() {
-		_ = sendResponse(conn, "400 Bad Request", []byte("path not found"))
-		return
-	}
-
-	SendDirectoryStructure(conn, path, parameterPath)
-}
-
-func DownloadRoute(request *Request, conn *bufio.ReadWriter) {
-	cookie, err := GetCookie(existingCookies, request)
-	if err != nil {
-		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
-		return
-	}
-
-	urlParameters := GetUrlParameters(request)
-
-	parameterPath, pathExists := urlParameters["path"]
-	if !pathExists || strings.Contains(parameterPath, "..") {
-		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
-		return
-	}
-
-	path := filepath.Join(UPLOAD_DIR, cookie.username, parameterPath)
-
-	info, err := os.Stat(path)
-	if err != nil {
-		_ = sendResponse(conn, "400 Bad Request", []byte("Bad Request"))
-		return
-	}
-
-	if info.IsDir() {
-		SendDirectoryAsZip(path, conn)
-	} else {
-		SendFile(conn, path)
 	}
 }
 
@@ -224,23 +93,24 @@ func handleRequest(request *Request, conn *bufio.ReadWriter) {
 		return
 	}
 
-	if urlPath == "/download" {
+	switch urlPath {
+	case "/download":
 		DownloadRoute(request, conn)
-		return
-	}
-
-	if urlPath == "/display" {
-		DisplayRoute(request, conn)
-		return
-	}
-
-	if urlPath == "/upload" {
+	case "/upload":
 		UploadRoute(request, conn)
-		return
+	case "/display":
+		DisplayRoute(request, conn)
+	case "/delete":
+		DeleteRoute(request, conn)
+	case "/create-directory":
+		CreateDirectoryRoute(request, conn)
+	case "/rename":
+		RenameRoute(request, conn)
+	default:
 	}
 }
 
-func UploadRoute(request *Request, conn *bufio.ReadWriter) {
+func RenameRoute(request *Request, conn *bufio.ReadWriter) {
 	cookie, err := GetCookie(existingCookies, request)
 	if err != nil {
 		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
@@ -249,65 +119,27 @@ func UploadRoute(request *Request, conn *bufio.ReadWriter) {
 
 	urlParameters := GetUrlParameters(request)
 
-	parameterPath, pathExists := urlParameters["path"]
-	if !pathExists || strings.Contains(parameterPath, "..") {
+	parameterOldPath, oldPathExists := urlParameters["old-path"]
+	if !oldPathExists || strings.Contains(parameterOldPath, "..") {
 		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
 		return
 	}
 
-	path := filepath.Join(UPLOAD_DIR, cookie.username, parameterPath)
-	handleMultipartBody(conn.Reader, request.Headers["Content-Type"], path)
-}
+	oldPath := filepath.Join(UPLOAD_DIR, cookie.username, parameterOldPath)
 
-func handleMultipartBody(body *bufio.Reader, contentType string, base string) error {
-	// Extract the boundary from the Content-Type header
-	const boundaryPrefix = "boundary="
-	boundaryIndex := strings.Index(contentType, boundaryPrefix)
-	if boundaryIndex == -1 {
-		return fmt.Errorf("no boundary found in Content-Type")
-	}
-	boundary := contentType[boundaryIndex+len(boundaryPrefix):]
-
-	// Create a multipart reader
-	mr := multipart.NewReader(body, boundary)
-
-	// Iterate through each part
-	for {
-		part, err := mr.NextPart()
-		if err == io.EOF {
-			// No more parts
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("error reading part: %v", err)
-		}
-
-		// Process each part
-		if part.FileName() != "" {
-			// This part is a file
-			fmt.Printf("Receiving file: %s\n", part.FileName())
-
-			// Create a destination file
-			fileName := filepath.Join(base, part.FileName())
-			dst, err := os.Create(fileName)
-			if err != nil {
-				return fmt.Errorf("error creating file: %v", err)
-			}
-			defer dst.Close()
-
-			// Copy the file content to the destination
-			_, err = io.Copy(dst, part)
-			if err != nil {
-				return fmt.Errorf("error saving file: %v", err)
-			}
-			fmt.Printf("Saved file: %s\n", part.FileName())
-		} else {
-			// This part is a field
-			buf := new(bytes.Buffer)
-			buf.ReadFrom(part)
-			fmt.Printf("Field: %s, Value: %s\n", part.FormName(), buf.String())
-		}
+	parameterNewPath, newPathExists := urlParameters["new-path"]
+	if !newPathExists || strings.Contains(parameterNewPath, "..") {
+		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
+		return
 	}
 
-	return nil
+	newPath := filepath.Join(UPLOAD_DIR, cookie.username, parameterNewPath)
+
+	err = os.Rename(oldPath, newPath)
+	if err != nil {
+		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
+	} else {
+		_ = sendResponse(conn, "200 OK", []byte("file renames"))
+	}
+
 }

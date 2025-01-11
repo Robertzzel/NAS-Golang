@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 )
 
 func sendResponse(conn *bufio.ReadWriter, status string, body []byte) error {
@@ -61,7 +60,7 @@ func CreateDirectoryTable(path, urlPath string) (string, error) {
 	}
 
 	body := "<table class=\"table\">"
-	body += "<thead><tr><th>Nume</th><th>Marime</th><th>ACCES</th><th>DOWNLOAD</th></tr></thead><tbody>"
+	body += "<thead><tr><th>Nume</th><th>Marime</th><th>ACCES</th><th>DOWNLOAD</th><th>REMOVE</th></tr></thead><tbody>"
 	for _, e := range entries {
 		body += CreateTableRowFromEntry(e, urlPath)
 	}
@@ -94,47 +93,15 @@ func CreateTableRowFromEntry(file os.DirEntry, dirName string) string {
 		body += fmt.Sprintf("<td><a href=\"%s\">DOWNLOAD</a></td>", fmt.Sprintf("/download?path=%s", downUrl))
 	}
 
+	body += fmt.Sprintf("<td><a href=\"%s\">REMOVE</a></td>", fmt.Sprintf("/delete?path=%s", downUrl))
+
+	body += fmt.Sprintf(`<td>
+	<label for="filename%s">Enter Name:</label>
+  	<input type="text" id="filename%s" name="filename" oninput="document.getElementById('filenameInput%s').href='/rename?old-path=%s&new-path=%s/' + encodeURIComponent(this.value)">
+  	<a id="filenameInput%s" href="/rename?old-path=%s&new-path=%s/">Create</a></td>`, downUrl, downUrl, downUrl, downUrl, filepath.Dir(downUrl), downUrl, filepath.Dir(downUrl)) // create directory
+
 	body += "</tr>"
 	return body
-}
-
-func formatBytes(bytes uint64) string {
-	const (
-		KB = 1024
-		MB = KB * 1024
-		GB = MB * 1024
-		TB = GB * 1024
-		PB = TB * 1024
-	)
-
-	switch {
-	case bytes >= PB:
-		return fmt.Sprintf("%.2f PB", float64(bytes)/float64(PB))
-	case bytes >= TB:
-		return fmt.Sprintf("%.2f TB", float64(bytes)/float64(TB))
-	case bytes >= GB:
-		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(GB))
-	case bytes >= MB:
-		return fmt.Sprintf("%.2f MB", float64(bytes)/float64(MB))
-	case bytes >= KB:
-		return fmt.Sprintf("%.2f KB", float64(bytes)/float64(KB))
-	default:
-		return fmt.Sprintf("%d B", bytes)
-	}
-}
-
-func GetDirectorySize(dir string) (int64, error) {
-	var size int64
-	err := filepath.Walk(dir, func(path string, f os.FileInfo, err error) error {
-		if !f.IsDir() {
-			size += f.Size()
-		}
-		return nil
-	})
-	if err != nil {
-		return 0, err
-	}
-	return size, nil
 }
 
 func SendDirectoryStructure(conn *bufio.ReadWriter, path string, urlPath string) {
@@ -155,7 +122,15 @@ func SendDirectoryStructure(conn *bufio.ReadWriter, path string, urlPath string)
 
 	body += fmt.Sprintf(`<form enctype="multipart/form-data" action="/upload?path=%s" method="post"><label for="files">Select files:</label>
   <input type="file" id="files" name="files"  multiple><br><br>
-  <input type="submit"></form>`, urlPath)
+  <input type="submit"></form>`, urlPath) // file upload
+
+	directryBasePath := urlPath
+	if directryBasePath == "/" {
+		directryBasePath = ""
+	}
+	body += fmt.Sprintf(`<label for="dirname">Enter Directory Name:</label>
+  <input type="text" id="dirname" name="dirname" placeholder="Enter path" oninput="document.getElementById('dynamicLink').href='/create-directory?path=%s/' + encodeURIComponent(this.value)">
+  <a id="dynamicLink" href="/create-directory?path=%s/">Create</a>`, directryBasePath, directryBasePath) // create directory
 
 	htmlPage := strings.ReplaceAll(TABLE_PAGE, "<%BODY%>", body)
 	_, _ = conn.WriteString(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n", len(htmlPage)))
@@ -187,42 +162,6 @@ func SendFile(conn *bufio.ReadWriter, path string) {
 	_, err = io.Copy(conn, file)
 	if err != nil {
 		_, _ = conn.WriteString("Error sending file content.")
-	}
-}
-
-func LoginRoute(request *Request, writer *bufio.ReadWriter) {
-	if request.Method == "GET" {
-		_ = sendHTMLResponse(writer, "200 OK", []byte(LOGIN_FROM))
-		return
-	} else if request.Method == "POST" {
-		body := make([]byte, 1024)
-		bytes, _ := writer.Read(body)
-
-		form := ParseFormBody(string(body[:bytes]))
-		users, err := ParseUsersFile(USERS_FILE)
-		if err != nil {
-			_ = sendResponse(writer, "500 Server Error", []byte("cannot parse users file"))
-			return
-		}
-
-		found := false
-		for _, user := range users {
-			if user[0] == form["username"] && user[1] == form["password"] {
-				found = true
-			}
-		}
-
-		if found {
-			cookie := Cookie{
-				username: form["username"],
-				value:    generateRandomString(150),
-				expires:  time.Now().Add(time.Hour * 24),
-			}
-			existingCookies = append(existingCookies, cookie)
-			_ = sendHTMLResponseWithHeaders(writer, "302 Found", []byte("success"), fmt.Sprintf("Set-Cookie: drive=%s\r\nLocation: /display?path=/", cookie.value))
-		} else {
-			_ = sendResponse(writer, "400 Bad Request", []byte("user not found"))
-		}
 	}
 }
 
