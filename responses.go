@@ -216,7 +216,7 @@ func LoginRoute(request *Request, writer *bufio.ReadWriter) {
 				expires:  time.Now().Add(time.Hour * 24),
 			}
 			existingCookies = append(existingCookies, cookie)
-			_ = sendHTMLResponseWithHeaders(writer, "200 OK", []byte("success"), fmt.Sprintf("Set-Cookie: drive=%s", cookie.value))
+			_ = sendHTMLResponseWithHeaders(writer, "302 Found", []byte("success"), fmt.Sprintf("Set-Cookie: drive=%s\r\nLocation: /display?path=/", cookie.value))
 		} else {
 			_ = sendResponse(writer, "400 Bad Request", []byte("user not found"))
 		}

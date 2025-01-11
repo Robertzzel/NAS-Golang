@@ -18,8 +18,8 @@ const (
 	PORT             = "8080"
 	UPLOAD_DIR       = "./uploads"
 	USERS_FILE       = "./users.csv"
-	CERTIFICATE_FILE = ""
-	KEY_FILE         = ""
+	CERTIFICATE_FILE = "./cert.pem"
+	KEY_FILE         = "./key.pem"
 )
 
 func main() {
