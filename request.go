@@ -41,7 +41,9 @@ func GetUrlParameters(request *Request) map[string]string {
 	for _, param := range strings.Split(urlParts[1], "&") {
 		paramParts := strings.Split(param, "=")
 		if len(paramParts) == 2 {
-			result[paramParts[0]] = paramParts[1]
+			p0 := strings.ReplaceAll(strings.TrimSpace(paramParts[0]), "%20", " ")
+			p1 := strings.ReplaceAll(strings.TrimSpace(paramParts[1]), "%20", " ")
+			result[p0] = p1
 		}
 	}
 

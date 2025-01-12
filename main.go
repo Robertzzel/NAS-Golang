@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	HOST             = "localhost"
+	HOST             = "192.168.0.5"
 	PORT             = "8080"
 	UPLOAD_DIR       = "./uploads"
 	USERS_FILE       = "./users.csv"

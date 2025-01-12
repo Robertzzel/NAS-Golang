@@ -59,12 +59,12 @@ func CreateDirectoryTable(path, urlPath string) (string, error) {
 		return "", nil
 	}
 
-	body := "<table class=\"table\">"
-	body += "<thead><tr><th>Nume</th><th>Marime</th><th>ACCES</th><th>DOWNLOAD</th><th>REMOVE</th></tr></thead><tbody>"
+	body := `<div class="table-container"><table class="table">`
+	body += "<thead><tr><th>Nume</th><th>Marime</th><th>ACCES</th><th>DOWNLOAD</th><th>REMOVE</th><th>RENAME</th></tr></thead><tbody>"
 	for _, e := range entries {
 		body += CreateTableRowFromEntry(e, urlPath)
 	}
-	body += "</tbody></table>"
+	body += "</tbody></table></div>"
 	return body, nil
 }
 
@@ -85,20 +85,20 @@ func CreateTableRowFromEntry(file os.DirEntry, dirName string) string {
 
 	if info.IsDir() {
 		body += "<td>-</td>" // no size
-		body += fmt.Sprintf("<td><a href=\"/display?path=%s\">ACCES</a></td>", downUrl)
-		body += fmt.Sprintf("<td><a href=\"%s\">DOWNLOAD</a></td>", fmt.Sprintf("/download?path=%s", downUrl))
+		body += fmt.Sprintf("<td><a class=\"btn\" href=\"/display?path=%s\">ACCES</a></td>", downUrl)
+		body += fmt.Sprintf("<td><a class=\"btn\" href=\"%s\">DOWNLOAD</a></td>", fmt.Sprintf("/download?path=%s", downUrl))
 	} else {
 		body += fmt.Sprintf("<td>%s</td>", formatBytes(uint64(info.Size())))
 		body += "<td>-</td>"
-		body += fmt.Sprintf("<td><a href=\"%s\">DOWNLOAD</a></td>", fmt.Sprintf("/download?path=%s", downUrl))
+		body += fmt.Sprintf("<td><a class=\"btn\" href=\"%s\">DOWNLOAD</a></td>", fmt.Sprintf("/download?path=%s", downUrl))
 	}
 
-	body += fmt.Sprintf("<td><a href=\"%s\">REMOVE</a></td>", fmt.Sprintf("/delete?path=%s", downUrl))
+	body += fmt.Sprintf("<td><a class=\"btn\" class=\"btn\" href=\"%s\">REMOVE</a></td>", fmt.Sprintf("/delete?path=%s", downUrl))
 
 	body += fmt.Sprintf(`<td>
 	<label for="filename%s">Enter Name:</label>
   	<input type="text" id="filename%s" name="filename" oninput="document.getElementById('filenameInput%s').href='/rename?old-path=%s&new-path=%s/' + encodeURIComponent(this.value)">
-  	<a id="filenameInput%s" href="/rename?old-path=%s&new-path=%s/">Create</a></td>`, downUrl, downUrl, downUrl, downUrl, filepath.Dir(downUrl), downUrl, filepath.Dir(downUrl)) // create directory
+  	<a class="btn" id="filenameInput%s" href="/rename?old-path=%s&new-path=%s/">Rename</a></td>`, downUrl, downUrl, downUrl, downUrl, filepath.Dir(downUrl), downUrl, filepath.Dir(downUrl)) // create directory
 
 	body += "</tr>"
 	return body
@@ -111,7 +111,7 @@ func SendDirectoryStructure(conn *bufio.ReadWriter, path string, urlPath string)
 		return
 	}
 
-	body += fmt.Sprintf("<a href=\"/display?path=%s\">BACK</a>", filepath.Dir(urlPath))
+	body += fmt.Sprintf("<a class=\"btn\" href=\"/display?path=%s\">BACK</a>", filepath.Dir(urlPath))
 
 	size, err := GetDirectorySize(UPLOAD_DIR)
 	if err == nil {
@@ -120,17 +120,17 @@ func SendDirectoryStructure(conn *bufio.ReadWriter, path string, urlPath string)
 		body += fmt.Sprintf("<p>Cannot display size: %s </p>", err.Error())
 	}
 
-	body += fmt.Sprintf(`<form enctype="multipart/form-data" action="/upload?path=%s" method="post"><label for="files">Select files:</label>
-  <input type="file" id="files" name="files"  multiple><br><br>
-  <input type="submit"></form>`, urlPath) // file upload
+	body += fmt.Sprintf(`<form  enctype="multipart/form-data" action="/upload?path=%s" method="post"><label>Select files for upload:</label>
+  <input style="display:inline;" type="file" id="files" name="files" multiple>
+  <input type="submit" value="Upload"></form>`, urlPath) // file upload
 
 	directryBasePath := urlPath
 	if directryBasePath == "/" {
 		directryBasePath = ""
 	}
-	body += fmt.Sprintf(`<label for="dirname">Enter Directory Name:</label>
+	body += fmt.Sprintf(`<div style="margin-top: 10px"><label for="dirname">Create directory:</label>
   <input type="text" id="dirname" name="dirname" placeholder="Enter path" oninput="document.getElementById('dynamicLink').href='/create-directory?path=%s/' + encodeURIComponent(this.value)">
-  <a id="dynamicLink" href="/create-directory?path=%s/">Create</a>`, directryBasePath, directryBasePath) // create directory
+  <a class="btn" id="dynamicLink" href="/create-directory?path=%s/">Create</a><div>`, directryBasePath, directryBasePath) // create directory
 
 	htmlPage := strings.ReplaceAll(TABLE_PAGE, "<%BODY%>", body)
 	_, _ = conn.WriteString(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n", len(htmlPage)))

@@ -148,6 +148,12 @@ func DeleteRoute(request *Request, conn *bufio.ReadWriter) {
 
 	path := filepath.Join(UPLOAD_DIR, cookie.username, parameterPath)
 
+	_, err = os.Stat(path)
+	if err != nil {
+		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
+		return
+	}
+
 	err = os.RemoveAll(path)
 	if err != nil {
 		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
