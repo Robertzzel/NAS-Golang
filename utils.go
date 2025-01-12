@@ -104,3 +104,12 @@ func Filter[T any](in []T, f func(T) bool) []T {
 	}
 	return newL
 }
+
+func Any[T any](in []T, f func(T) bool) bool {
+	for _, v := range in {
+		if f(v) {
+			return true
+		}
+	}
+	return false
+}

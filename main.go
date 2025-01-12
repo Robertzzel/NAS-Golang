@@ -99,59 +99,49 @@ func handleRequest(request *Request, conn *bufio.ReadWriter) {
 		return
 	}
 
-	_, err := GetCookie(existingCookies, request)
-	if err != nil {
-		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
-		return
-	}
-
 	switch urlPath {
 	case "/download":
+		_, err := GetCookie(existingCookies, request)
+		if err != nil {
+			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
+			return
+		}
 		DownloadRoute(request, conn)
 	case "/upload":
+		_, err := GetCookie(existingCookies, request)
+		if err != nil {
+			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
+			return
+		}
 		UploadRoute(request, conn)
 	case "/display":
+		_, err := GetCookie(existingCookies, request)
+		if err != nil {
+			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
+			return
+		}
 		DisplayRoute(request, conn)
 	case "/delete":
+		_, err := GetCookie(existingCookies, request)
+		if err != nil {
+			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
+			return
+		}
 		DeleteRoute(request, conn)
 	case "/create-directory":
+		_, err := GetCookie(existingCookies, request)
+		if err != nil {
+			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
+			return
+		}
 		CreateDirectoryRoute(request, conn)
 	case "/rename":
+		_, err := GetCookie(existingCookies, request)
+		if err != nil {
+			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
+			return
+		}
 		RenameRoute(request, conn)
 	default:
 	}
-}
-
-func RenameRoute(request *Request, conn *bufio.ReadWriter) {
-	cookie, err := GetCookie(existingCookies, request)
-	if err != nil {
-		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
-		return
-	}
-
-	urlParameters := GetUrlParameters(request)
-
-	parameterOldPath, oldPathExists := urlParameters["old-path"]
-	if !oldPathExists || strings.Contains(parameterOldPath, "..") {
-		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
-		return
-	}
-
-	oldPath := filepath.Join(UPLOAD_DIR, cookie.username, parameterOldPath)
-
-	parameterNewPath, newPathExists := urlParameters["new-path"]
-	if !newPathExists || strings.Contains(parameterNewPath, "..") {
-		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
-		return
-	}
-
-	newPath := filepath.Join(UPLOAD_DIR, cookie.username, parameterNewPath)
-
-	err = os.Rename(oldPath, newPath)
-	if err != nil {
-		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
-	} else {
-		_ = sendResponse(conn, "200 OK", []byte("file renames"))
-	}
-
 }

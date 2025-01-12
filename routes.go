@@ -117,12 +117,9 @@ func LoginRoute(request *Request, writer *bufio.ReadWriter) {
 			return
 		}
 
-		found := false
-		for _, user := range users {
-			if user[0] == form["username"] && user[1] == form["password"] {
-				found = true
-			}
-		}
+		found := Any(users, func(user []string) bool {
+			return user[0] == form["username"] && user[1] == form["password"]
+		})
 
 		if found {
 			cookie := Cookie{
@@ -201,5 +198,38 @@ func CreateDirectoryRoute(request *Request, conn *bufio.ReadWriter) {
 		}
 	} else {
 		_ = sendResponse(conn, "400 Bad Request", []byte("directory already exists"))
+	}
+}
+
+func RenameRoute(request *Request, conn *bufio.ReadWriter) {
+	cookie, err := GetCookie(existingCookies, request)
+	if err != nil {
+		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
+		return
+	}
+
+	urlParameters := GetUrlParameters(request)
+
+	parameterOldPath, oldPathExists := urlParameters["old-path"]
+	if !oldPathExists || strings.Contains(parameterOldPath, "..") {
+		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
+		return
+	}
+
+	oldPath := filepath.Join(UPLOAD_DIR, cookie.username, parameterOldPath)
+
+	parameterNewPath, newPathExists := urlParameters["new-path"]
+	if !newPathExists || strings.Contains(parameterNewPath, "..") {
+		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
+		return
+	}
+
+	newPath := filepath.Join(UPLOAD_DIR, cookie.username, parameterNewPath)
+
+	err = os.Rename(oldPath, newPath)
+	if err != nil {
+		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
+	} else {
+		_ = sendResponse(conn, "200 OK", []byte("file renames"))
 	}
 }
