@@ -92,12 +92,19 @@ func DisplayRoute(request *Request, conn *bufio.ReadWriter) {
 		return
 	}
 
-	SendDirectoryStructure(conn, path, parameterPath)
+	filter := urlParameters["filter"]
+
+	SendDirectoryStructure(conn, path, parameterPath, filter)
 }
 
 func LoginRoute(request *Request, writer *bufio.ReadWriter) {
 	if request.Method == "GET" {
-		_ = sendHTMLResponse(writer, "200 OK", []byte(LOGIN_FROM))
+		html, err := GetLoginPageHTML()
+		if err != nil {
+			_ = sendResponse(writer, "500 Internal Server Error", []byte("Internal Server Error"))
+			return
+		}
+		_ = sendHTMLResponse(writer, "200 OK", []byte(html))
 		return
 	} else if request.Method == "POST" {
 		body := make([]byte, 1024)

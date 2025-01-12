@@ -78,3 +78,19 @@ func ParseUsersFile(path string) ([][]string, error) {
 
 	return result, nil
 }
+
+func GetLoginPageHTML() (string, error) {
+	file, err := os.ReadFile("./static/login.html")
+	if err != nil {
+		return "", err
+	}
+	return string(file), nil
+}
+
+func GetTablePageHTML() (string, error) {
+	file, err := os.ReadFile("./static/table.html")
+	if err != nil {
+		return "", err
+	}
+	return string(file), nil
+}

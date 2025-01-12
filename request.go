@@ -59,7 +59,7 @@ func GetCookieValueFromRequest(request *Request, name string) string {
 	neededCookie := ""
 	for _, cookie := range strings.Split(cookies, ";") {
 		cookieParts := strings.Split(strings.TrimSpace(cookie), "=")
-		if len(cookieParts) == 2 && cookieParts[0] == "drive" {
+		if len(cookieParts) == 2 && cookieParts[0] == name {
 			neededCookie = cookieParts[1]
 		}
 	}

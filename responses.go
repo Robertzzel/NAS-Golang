@@ -53,7 +53,7 @@ func sendHTMLResponseWithHeaders(conn *bufio.ReadWriter, status string, body []b
 	return nil
 }
 
-func CreateDirectoryTable(path, urlPath string) (string, error) {
+func CreateDirectoryTable(path, urlPath, filter string) (string, error) {
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return "", nil
@@ -62,7 +62,9 @@ func CreateDirectoryTable(path, urlPath string) (string, error) {
 	body := `<div class="table-container"><table class="table">`
 	body += "<thead><tr><th>Nume</th><th>Marime</th><th>ACCES</th><th>DOWNLOAD</th><th>REMOVE</th><th>RENAME</th></tr></thead><tbody>"
 	for _, e := range entries {
-		body += CreateTableRowFromEntry(e, urlPath)
+		if strings.Contains(e.Name(), filter) {
+			body += CreateTableRowFromEntry(e, urlPath)
+		}
 	}
 	body += "</tbody></table></div>"
 	return body, nil
@@ -104,13 +106,24 @@ func CreateTableRowFromEntry(file os.DirEntry, dirName string) string {
 	return body
 }
 
-func SendDirectoryStructure(conn *bufio.ReadWriter, path string, urlPath string) {
-	body, err := CreateDirectoryTable(path, urlPath)
+func SendDirectoryStructure(conn *bufio.ReadWriter, path, urlPath, filter string) {
+	directryBasePath := urlPath
+	if directryBasePath == "/" {
+		directryBasePath = ""
+	}
+
+	body := fmt.Sprintf(`<div class="search">
+        <input type="text" id="filter" name="filter" placeholder="Search" oninput="document.getElementById('filterA').href='/display?path=%s/&filter=' + encodeURIComponent(this.value)">
+        <a class="btn" id="filterA" href="/display?path=%s/">Search</a>
+    <div>`, directryBasePath, directryBasePath)
+
+	tableHtml, err := CreateDirectoryTable(path, urlPath, filter)
 	if err != nil {
 		_ = sendResponse(conn, "500 Server Erro", []byte("cannot display directory table"))
 		return
 	}
 
+	body += tableHtml
 	body += fmt.Sprintf("<a class=\"btn\" href=\"/display?path=%s\">BACK</a>", filepath.Dir(urlPath))
 
 	size, err := GetDirectorySize(UPLOAD_DIR)
@@ -124,15 +137,17 @@ func SendDirectoryStructure(conn *bufio.ReadWriter, path string, urlPath string)
   <input style="display:inline;" type="file" id="files" name="files" multiple>
   <input type="submit" value="Upload"></form>`, urlPath) // file upload
 
-	directryBasePath := urlPath
-	if directryBasePath == "/" {
-		directryBasePath = ""
-	}
 	body += fmt.Sprintf(`<div style="margin-top: 10px"><label for="dirname">Create directory:</label>
   <input type="text" id="dirname" name="dirname" placeholder="Enter path" oninput="document.getElementById('dynamicLink').href='/create-directory?path=%s/' + encodeURIComponent(this.value)">
   <a class="btn" id="dynamicLink" href="/create-directory?path=%s/">Create</a><div>`, directryBasePath, directryBasePath) // create directory
 
-	htmlPage := strings.ReplaceAll(TABLE_PAGE, "<%BODY%>", body)
+	html, err := GetTablePageHTML()
+	if err != nil {
+		_ = sendResponse(conn, "500 Server Erro", []byte("cannot display directory table"))
+		return
+	}
+
+	htmlPage := strings.ReplaceAll(html, "<%BODY%>", body)
 	_, _ = conn.WriteString(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n", len(htmlPage)))
 	_, _ = conn.WriteString(htmlPage)
 }
