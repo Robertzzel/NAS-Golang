@@ -10,18 +10,30 @@ import (
 	"strings"
 )
 
-const (
-	HOST             = "192.168.0.5"
-	PORT             = "8080"
-	UPLOAD_DIR       = "./uploads"
-	USERS_FILE       = "./users.csv"
-	CERTIFICATE_FILE = "./cert.pem"
-	KEY_FILE         = "./key.pem"
+var (
+	HOST             = ""
+	PORT             = ""
+	UPLOAD_DIR       = ""
+	USERS_FILE       = ""
+	CERTIFICATE_FILE = ""
+	KEY_FILE         = ""
 )
 
 var existingCookies = make([]Cookie, 0)
 
 func main() {
+	if len(os.Args) != 7 {
+		fmt.Printf("Usage: %s HOST PORT UPLOAD_DIR USERS_FILE CERTIFICATE KEY\n", os.Args[0])
+		return
+	}
+
+	HOST = os.Args[1]
+	PORT = os.Args[2]
+	UPLOAD_DIR = os.Args[3]
+	USERS_FILE = os.Args[4]
+	CERTIFICATE_FILE = os.Args[5]
+	KEY_FILE = os.Args[6]
+
 	users, err := ParseUsersFile(USERS_FILE)
 	if err != nil {
 		return
