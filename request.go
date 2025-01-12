@@ -111,11 +111,16 @@ func parseHeaders(reader *bufio.ReadWriter) (map[string]string, error) {
 	return headers, nil
 }
 
+// also remove the old cookies
 func GetCookie(activeCookies []Cookie, request *Request) (*Cookie, error) {
 	neededCookieValue := GetCookieValueFromRequest(request, "drive")
 	if neededCookieValue == "" {
 		return nil, errors.New("cookie not found")
 	}
+
+	activeCookies = Filter(activeCookies, func(cookie Cookie) bool {
+		return cookie.expires.After(time.Now())
+	})
 
 	for _, cookie := range activeCookies {
 		if cookie.value == neededCookieValue && cookie.expires.After(time.Now()) {

@@ -94,3 +94,13 @@ func GetTablePageHTML() (string, error) {
 	}
 	return string(file), nil
 }
+
+func Filter[T any](in []T, f func(T) bool) []T {
+	newL := make([]T, 0)
+	for _, v := range in {
+		if f(v) {
+			newL = append(newL, v)
+		}
+	}
+	return newL
+}
