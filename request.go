@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 type Request struct {
@@ -18,12 +18,7 @@ type Request struct {
 	Path    string
 	Version string
 	Headers map[string]string
-}
-
-type Cookie struct {
-	username string
-	value    string
-	expires  time.Time
+	Ip      net.Addr
 }
 
 func GetUrlPath(request *Request) string {
@@ -48,23 +43,6 @@ func GetUrlParameters(request *Request) map[string]string {
 	}
 
 	return result
-}
-
-func GetCookieValueFromRequest(request *Request, name string) string {
-	cookies, cookiesExists := request.Headers["Cookie"]
-	if !cookiesExists {
-		return ""
-	}
-
-	neededCookie := ""
-	for _, cookie := range strings.Split(cookies, ";") {
-		cookieParts := strings.Split(strings.TrimSpace(cookie), "=")
-		if len(cookieParts) == 2 && cookieParts[0] == name {
-			neededCookie = cookieParts[1]
-		}
-	}
-
-	return neededCookie
 }
 
 func ParseRequest(reader *bufio.ReadWriter) (Request, error) {
@@ -112,24 +90,6 @@ func parseHeaders(reader *bufio.ReadWriter) (map[string]string, error) {
 }
 
 // also remove the old cookies
-func GetCookie(activeCookies []Cookie, request *Request) (*Cookie, error) {
-	neededCookieValue := GetCookieValueFromRequest(request, "drive")
-	if neededCookieValue == "" {
-		return nil, errors.New("cookie not found")
-	}
-
-	activeCookies = Filter(activeCookies, func(cookie Cookie) bool {
-		return cookie.expires.After(time.Now())
-	})
-
-	for _, cookie := range activeCookies {
-		if cookie.value == neededCookieValue && cookie.expires.After(time.Now()) {
-			return &cookie, nil
-		}
-	}
-
-	return nil, errors.New("cookie not found")
-}
 
 func ParseFormBody(body string) map[string]string {
 	result := make(map[string]string)

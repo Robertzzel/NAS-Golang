@@ -19,7 +19,8 @@ var (
 	KEY_FILE         = ""
 )
 
-var existingCookies = make([]Cookie, 0)
+var cookieStore = NewCookieStore()
+var bruteForceGuard = NewBruteForceGuard()
 
 func main() {
 	if len(os.Args) != 7 {
@@ -79,6 +80,10 @@ func main() {
 			continue
 		}
 
+		if bruteForceGuard.CheckBruteForceAttempt(conn.RemoteAddr()) {
+			return
+		}
+
 		handleRequest(&request, readWriter)
 
 		_ = readWriter.Flush()
@@ -101,42 +106,42 @@ func handleRequest(request *Request, conn *bufio.ReadWriter) {
 
 	switch urlPath {
 	case "/download":
-		_, err := GetCookie(existingCookies, request)
+		_, err := cookieStore.GetCookie(request)
 		if err != nil {
 			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
 			return
 		}
 		DownloadRoute(request, conn)
 	case "/upload":
-		_, err := GetCookie(existingCookies, request)
+		_, err := cookieStore.GetCookie(request)
 		if err != nil {
 			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
 			return
 		}
 		UploadRoute(request, conn)
 	case "/display":
-		_, err := GetCookie(existingCookies, request)
+		_, err := cookieStore.GetCookie(request)
 		if err != nil {
 			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
 			return
 		}
 		DisplayRoute(request, conn)
 	case "/delete":
-		_, err := GetCookie(existingCookies, request)
+		_, err := cookieStore.GetCookie(request)
 		if err != nil {
 			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
 			return
 		}
 		DeleteRoute(request, conn)
 	case "/create-directory":
-		_, err := GetCookie(existingCookies, request)
+		_, err := cookieStore.GetCookie(request)
 		if err != nil {
 			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
 			return
 		}
 		CreateDirectoryRoute(request, conn)
 	case "/rename":
-		_, err := GetCookie(existingCookies, request)
+		_, err := cookieStore.GetCookie(request)
 		if err != nil {
 			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
 			return

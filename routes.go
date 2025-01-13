@@ -6,11 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 func DownloadRoute(request *Request, conn *bufio.ReadWriter) {
-	cookie, err := GetCookie(existingCookies, request)
+	cookie, err := cookieStore.GetCookie(request)
 	if err != nil {
 		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
 		return
@@ -40,7 +39,7 @@ func DownloadRoute(request *Request, conn *bufio.ReadWriter) {
 }
 
 func UploadRoute(request *Request, conn *bufio.ReadWriter) {
-	cookie, err := GetCookie(existingCookies, request)
+	cookie, err := cookieStore.GetCookie(request)
 	if err != nil {
 		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
 		return
@@ -65,7 +64,7 @@ func UploadRoute(request *Request, conn *bufio.ReadWriter) {
 }
 
 func DisplayRoute(request *Request, conn *bufio.ReadWriter) {
-	cookie, err := GetCookie(existingCookies, request)
+	cookie, err := cookieStore.GetCookie(request)
 	if err != nil {
 		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
 		return
@@ -122,12 +121,7 @@ func LoginRoute(request *Request, writer *bufio.ReadWriter) {
 		})
 
 		if found {
-			cookie := Cookie{
-				username: form["username"],
-				value:    generateRandomString(150),
-				expires:  time.Now().Add(time.Hour * 24),
-			}
-			existingCookies = append(existingCookies, cookie)
+			cookie := cookieStore.CreateCookie(form["username"])
 			_ = sendHTMLResponseWithHeaders(writer, "302 Found", []byte("success"), fmt.Sprintf("Set-Cookie: drive=%s\r\nLocation: /display?path=/", cookie.value))
 		} else {
 			_ = sendResponse(writer, "400 Bad Request", []byte("user not found"))
@@ -136,7 +130,7 @@ func LoginRoute(request *Request, writer *bufio.ReadWriter) {
 }
 
 func DeleteRoute(request *Request, conn *bufio.ReadWriter) {
-	cookie, err := GetCookie(existingCookies, request)
+	cookie, err := cookieStore.GetCookie(request)
 	if err != nil {
 		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
 		return
@@ -173,7 +167,7 @@ func CreateDirectoryRoute(request *Request, conn *bufio.ReadWriter) {
 		return
 	}
 
-	cookie, err := GetCookie(existingCookies, request)
+	cookie, err := cookieStore.GetCookie(request)
 	if err != nil {
 		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
 		return
@@ -202,7 +196,7 @@ func CreateDirectoryRoute(request *Request, conn *bufio.ReadWriter) {
 }
 
 func RenameRoute(request *Request, conn *bufio.ReadWriter) {
-	cookie, err := GetCookie(existingCookies, request)
+	cookie, err := cookieStore.GetCookie(request)
 	if err != nil {
 		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
 		return

@@ -113,3 +113,12 @@ func Any[T any](in []T, f func(T) bool) bool {
 	}
 	return false
 }
+
+func FirstOr[T any](in []T, f func(T) bool, def T) T {
+	for _, v := range in {
+		if f(v) {
+			return v
+		}
+	}
+	return def
+}
