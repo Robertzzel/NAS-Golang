@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,10 @@ type Request struct {
 	Version string
 	Headers map[string]string
 	Ip      net.Addr
+}
+
+func NewResponse() string {
+
 }
 
 func GetUrlPath(request *Request) string {

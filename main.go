@@ -99,54 +99,42 @@ func handleRequest(request *Request, conn *bufio.ReadWriter) {
 		return
 	}
 
-	if urlPath == "/log" {
-		LoginRoute(request, conn)
+	if urlPath == "/log" && request.Method == "GET" {
+		loginPage := LoginGetRoute()
+		_, _ = conn.WriteString(loginPage)
 		return
 	}
 
-	switch urlPath {
-	case "/download":
-		_, err := cookieStore.GetCookie(request)
-		if err != nil {
-			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
-			return
-		}
+	if urlPath == "/log" && request.Method == "POST" {
+		body := make([]byte, 1024)
+		bytes, _ := conn.Read(body)
+		loginResponse := LoginPostRoute(string(body[:bytes]))
+		_, _ = conn.WriteString(loginResponse)
+		return
+	}
+
+	_, err := cookieStore.GetCookie(request)
+	if err != nil {
+		return
+	}
+
+	switch true {
+	case urlPath == "/download" && request.Method == "GET":
 		DownloadRoute(request, conn)
-	case "/upload":
-		_, err := cookieStore.GetCookie(request)
-		if err != nil {
-			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
-			return
-		}
+	case urlPath == "/upload" && request.Method == "POST":
 		UploadRoute(request, conn)
-	case "/display":
-		_, err := cookieStore.GetCookie(request)
-		if err != nil {
-			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
-			return
-		}
-		DisplayRoute(request, conn)
-	case "/delete":
-		_, err := cookieStore.GetCookie(request)
-		if err != nil {
-			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
-			return
-		}
-		DeleteRoute(request, conn)
-	case "/create-directory":
-		_, err := cookieStore.GetCookie(request)
-		if err != nil {
-			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
-			return
-		}
-		CreateDirectoryRoute(request, conn)
-	case "/rename":
-		_, err := cookieStore.GetCookie(request)
-		if err != nil {
-			_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
-			return
-		}
-		RenameRoute(request, conn)
+	case urlPath == "/display" && request.Method == "GET":
+		response := DisplayRoute(request)
+		_, _ = conn.WriteString(response)
+	case urlPath == "/delete" && request.Method == "GET":
+		response := DeleteRoute(request)
+		_, _ = conn.WriteString(response)
+	case urlPath == "/create-directory" && request.Method == "GET":
+		response := CreateDirectoryRoute(request)
+		_, _ = conn.WriteString(response)
+	case urlPath == "/rename" && request.Method == "GET":
+		response := RenameRoute(request)
+		_, _ = conn.WriteString(response)
 	default:
 	}
 }

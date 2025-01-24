@@ -5,11 +5,39 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 )
+
+func createStringResponse(status int, body string) string {
+	return fmt.Sprintf(
+		"HTTP/1.1 %d %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
+		status, http.StatusText(status), len(body), body,
+	)
+}
+
+func createHTMLResponse(status int, body string) string {
+	return fmt.Sprintf(
+		"HTTP/1.1 %d %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n%s",
+		status, http.StatusText(status), len(body), body,
+	)
+}
+
+func createHTMLResponseWithHeaders(status int, body string, headers []string) string {
+	combinedHeaders := ""
+	for _, header := range headers {
+		combinedHeaders += fmt.Sprintf("%s\r\n", header)
+	}
+	combinedHeaders += "\r\n"
+
+	return fmt.Sprintf(
+		"HTTP/1.1 %d %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\n%s%s",
+		status, http.StatusText(status), len(body), combinedHeaders, body,
+	)
+}
 
 func sendResponse(conn *bufio.ReadWriter, status string, body []byte) error {
 	header := fmt.Sprintf(
@@ -106,7 +134,7 @@ func CreateTableRowFromEntry(file os.DirEntry, dirName string) string {
 	return body
 }
 
-func SendDirectoryStructure(conn *bufio.ReadWriter, path, urlPath, filter string) {
+func CreateDirectoryStructure(path, urlPath, filter string) string {
 	directryBasePath := urlPath
 	if directryBasePath == "/" {
 		directryBasePath = ""
@@ -119,8 +147,7 @@ func SendDirectoryStructure(conn *bufio.ReadWriter, path, urlPath, filter string
 
 	tableHtml, err := CreateDirectoryTable(path, urlPath, filter)
 	if err != nil {
-		_ = sendResponse(conn, "500 Server Erro", []byte("cannot display directory table"))
-		return
+		return createStringResponse(http.StatusInternalServerError, "cannot display directory table")
 	}
 
 	body += tableHtml
@@ -143,13 +170,11 @@ func SendDirectoryStructure(conn *bufio.ReadWriter, path, urlPath, filter string
 
 	html, err := GetTablePageHTML()
 	if err != nil {
-		_ = sendResponse(conn, "500 Server Erro", []byte("cannot display directory table"))
-		return
+		return createStringResponse(http.StatusInternalServerError, "cannot display directory table")
 	}
 
 	htmlPage := strings.ReplaceAll(html, "<%BODY%>", body)
-	_, _ = conn.WriteString(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n", len(htmlPage)))
-	_, _ = conn.WriteString(htmlPage)
+	return fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n%s", len(htmlPage), htmlPage)
 }
 
 func SendFile(conn *bufio.ReadWriter, path string) {
@@ -184,7 +209,7 @@ func SendDirectoryAsZip(inputDirectory string, writer *bufio.ReadWriter) {
 	_, _ = writer.WriteString("HTTP/1.1 200 OK\r\n")
 	_, _ = writer.WriteString("Content-Type: application/octet-stream\r\n")
 	_, _ = writer.WriteString(fmt.Sprintf("Content-Disposition: attachment; filename=\"%s.zip\"\r\n\r\n", inputDirectory))
-	_ = writer.Flush()
+
 	w := zip.NewWriter(writer)
 	defer w.Close()
 
@@ -195,14 +220,14 @@ func SendDirectoryAsZip(inputDirectory string, writer *bufio.ReadWriter) {
 		if info.IsDir() {
 			return nil
 		}
+
 		file, err := os.Open(path)
 		if err != nil {
 			return err
 		}
 		defer file.Close()
 
-		inZipFile := path
-		f, err := w.Create(inZipFile)
+		f, err := w.Create(path)
 		if err != nil {
 			return err
 		}
@@ -214,5 +239,5 @@ func SendDirectoryAsZip(inputDirectory string, writer *bufio.ReadWriter) {
 
 		return nil
 	}
-	filepath.Walk(inputDirectory, walker)
+	_ = filepath.Walk(inputDirectory, walker)
 }
