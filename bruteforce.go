@@ -19,14 +19,9 @@ func NewBruteForceGuard() BruteForceGuard {
 	return BruteForceGuard{make([]*BruteForceAttempt, 0)}
 }
 
-func (guard *BruteForceGuard) CheckBruteForceAttempt(ip net.Addr) bool {
-	guard.attempts = Filter(guard.attempts, func(attempt *BruteForceAttempt) bool {
-		return attempt.LastTime.After(time.Now().Add(-time.Minute))
-	}) // cleaning old attempts
-
-	currentAttempt := FirstOr(guard.attempts, func(attempt *BruteForceAttempt) bool {
-		return attempt.Ip.String() == attempt.Ip.String()
-	}, nil)
+func (guard *BruteForceGuard) IsBruteForceAttempt(ip net.Addr) bool {
+	guard.cleanOldAttempts()
+	currentAttempt := guard.getAttemptByIp(ip)
 
 	if currentAttempt == nil {
 		currentAttempt = &BruteForceAttempt{Count: 1, LastTime: time.Now(), Ip: ip}
@@ -36,4 +31,16 @@ func (guard *BruteForceGuard) CheckBruteForceAttempt(ip net.Addr) bool {
 	}
 
 	return currentAttempt.Count > 100
+}
+
+func (guard *BruteForceGuard) cleanOldAttempts() {
+	guard.attempts = Filter(guard.attempts, func(attempt *BruteForceAttempt) bool {
+		return attempt.LastTime.After(time.Now().Add(-time.Minute))
+	})
+}
+
+func (guard *BruteForceGuard) getAttemptByIp(ip net.Addr) *BruteForceAttempt {
+	return FirstOr(guard.attempts, func(attempt *BruteForceAttempt) bool {
+		return attempt.Ip.String() == ip.String()
+	}, nil)
 }

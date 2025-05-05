@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,8 +43,10 @@ func main() {
 
 	for _, user := range users {
 		path := filepath.Join(UPLOAD_DIR, user[0])
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			if err := os.MkdirAll(path, 0755); err != nil {
+		_, err := os.Stat(path)
+		if os.IsNotExist(err) {
+			err := os.MkdirAll(path, 0755)
+			if err != nil {
 				fmt.Printf("Error creating upload directory: %v\n", err)
 				return
 			}
@@ -80,7 +83,7 @@ func main() {
 			continue
 		}
 
-		if bruteForceGuard.CheckBruteForceAttempt(conn.RemoteAddr()) {
+		if bruteForceGuard.IsBruteForceAttempt(conn.RemoteAddr()) {
 			return
 		}
 
@@ -95,22 +98,18 @@ func handleRequest(request *Request, conn *bufio.ReadWriter) {
 	urlPath := GetUrlPath(request)
 
 	if strings.Contains(urlPath, "..") {
-		_ = sendResponse(conn, "400 Bad Request", []byte("Bad Request"))
+		sendEmptyResponse(conn, http.StatusBadRequest)
 		return
 	}
 
-	if urlPath == "/log" && request.Method == "GET" {
-		loginPage := LoginGetRoute()
-		_, _ = conn.WriteString(loginPage)
-		return
-	}
-
-	if urlPath == "/log" && request.Method == "POST" {
-		body := make([]byte, 1024)
-		bytes, _ := conn.Read(body)
-		loginResponse := LoginPostRoute(string(body[:bytes]))
-		_, _ = conn.WriteString(loginResponse)
-		return
+	if urlPath == "/log" {
+		if request.Method == "GET" {
+			LoginGetRoute(conn)
+			return
+		} else if request.Method == "POST" {
+			LoginPostRoute(conn)
+			return
+		}
 	}
 
 	_, err := cookieStore.GetCookie(request)
@@ -119,22 +118,21 @@ func handleRequest(request *Request, conn *bufio.ReadWriter) {
 	}
 
 	switch true {
+	case urlPath == "/home" && request.Method == "GET":
+		page, _ := GetHomePageHTML()
+		_, _ = conn.WriteString(page)
 	case urlPath == "/download" && request.Method == "GET":
 		DownloadRoute(request, conn)
 	case urlPath == "/upload" && request.Method == "POST":
 		UploadRoute(request, conn)
-	case urlPath == "/display" && request.Method == "GET":
-		response := DisplayRoute(request)
-		_, _ = conn.WriteString(response)
+	case urlPath == "/directory" && request.Method == "GET":
+		GetDirectoryStructureRoute(request, conn)
 	case urlPath == "/delete" && request.Method == "GET":
-		response := DeleteRoute(request)
-		_, _ = conn.WriteString(response)
+		DeleteRoute(request, conn)
 	case urlPath == "/create-directory" && request.Method == "GET":
-		response := CreateDirectoryRoute(request)
-		_, _ = conn.WriteString(response)
+		CreateDirectoryRoute(request, conn)
 	case urlPath == "/rename" && request.Method == "GET":
-		response := RenameRoute(request)
-		_, _ = conn.WriteString(response)
+		RenameRoute(request, conn)
 	default:
 	}
 }

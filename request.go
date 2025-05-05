@@ -8,32 +8,28 @@ import (
 	"io"
 	"mime/multipart"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
 type Request struct {
-	Method  string
-	Path    string
-	Version string
-	Headers map[string]string
-	Ip      net.Addr
-}
-
-func NewResponse() string {
-
+	Method        string
+	Url           string
+	Version       string
+	UrlParameters map[string]string
+	Headers       map[string]string
+	Ip            net.Addr
 }
 
 func GetUrlPath(request *Request) string {
-	return strings.Split(request.Path, "?")[0]
+	return strings.Split(request.Url, "?")[0]
 }
 
-func GetUrlParameters(request *Request) map[string]string {
+func getUrlParameters(request *Request) map[string]string {
 	result := make(map[string]string)
 
-	urlParts := strings.Split(request.Path, "?")
+	urlParts := strings.Split(request.Url, "?")
 	if len(urlParts) != 2 {
 		return result
 	}
@@ -61,13 +57,15 @@ func ParseRequest(reader *bufio.ReadWriter) (Request, error) {
 		return Request{}, errors.New("less than 3 http params")
 	}
 
-	request := Request{Method: parts[0], Path: parts[1], Version: parts[2]}
+	request := Request{Method: parts[0], Url: parts[1], Version: parts[2]}
 
 	headers, err := parseHeaders(reader)
 	if err != nil {
 		return Request{}, nil
 	}
 	request.Headers = headers
+
+	request.UrlParameters = getUrlParameters(&request)
 	return request, nil
 }
 
@@ -80,7 +78,7 @@ func parseHeaders(reader *bufio.ReadWriter) (map[string]string, error) {
 		}
 
 		line = strings.TrimSpace(line)
-		if line == "" {
+		if line == "" { // no more headers
 			break
 		}
 
@@ -93,8 +91,6 @@ func parseHeaders(reader *bufio.ReadWriter) (map[string]string, error) {
 	}
 	return headers, nil
 }
-
-// also remove the old cookies
 
 func ParseFormBody(body string) map[string]string {
 	result := make(map[string]string)

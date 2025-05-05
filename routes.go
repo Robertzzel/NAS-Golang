@@ -12,15 +12,13 @@ import (
 func DownloadRoute(request *Request, conn *bufio.ReadWriter) {
 	cookie, err := cookieStore.GetCookie(request)
 	if err != nil {
-		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
+		sendEmptyResponse(conn, http.StatusBadRequest)
 		return
 	}
 
-	urlParameters := GetUrlParameters(request)
-
-	parameterPath, pathExists := urlParameters["path"]
+	parameterPath, pathExists := request.UrlParameters["path"]
 	if !pathExists || strings.Contains(parameterPath, "..") {
-		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
+		sendEmptyResponse(conn, http.StatusBadRequest)
 		return
 	}
 
@@ -28,7 +26,7 @@ func DownloadRoute(request *Request, conn *bufio.ReadWriter) {
 
 	info, err := os.Stat(path)
 	if err != nil {
-		_ = sendResponse(conn, "400 Bad Request", []byte("Bad Request"))
+		sendEmptyResponse(conn, http.StatusBadRequest)
 		return
 	}
 
@@ -42,166 +40,184 @@ func DownloadRoute(request *Request, conn *bufio.ReadWriter) {
 func UploadRoute(request *Request, conn *bufio.ReadWriter) {
 	cookie, err := cookieStore.GetCookie(request)
 	if err != nil {
-		_ = sendResponse(conn, "400 Bad Request", []byte("Not logged in"))
+		sendEmptyResponse(conn, http.StatusBadRequest)
 		return
 	}
 
-	urlParameters := GetUrlParameters(request)
-
-	parameterPath, pathExists := urlParameters["path"]
+	parameterPath, pathExists := request.UrlParameters["path"]
 	if !pathExists || strings.Contains(parameterPath, "..") {
-		_ = sendResponse(conn, "400 Bad Request", []byte("bad path"))
+		sendEmptyResponse(conn, http.StatusBadRequest)
 		return
 	}
 
 	path := filepath.Join(UPLOAD_DIR, cookie.username, parameterPath)
 	err = handleMultipartBody(conn.Reader, request.Headers["Content-Type"], path)
 	if err != nil {
-		_ = sendResponse(conn, "400 Bad Request", []byte("Didn't receive the files"))
+		sendEmptyResponse(conn, http.StatusBadRequest)
 		return
 	}
 
-	_ = sendResponse(conn, "200 Ok", []byte("files uploaded"))
+	sendEmptyResponse(conn, http.StatusOK)
 }
 
-func DisplayRoute(request *Request) string {
+func GetDirectoryStructureRoute(request *Request, conn *bufio.ReadWriter) {
 	cookie, err := cookieStore.GetCookie(request)
 	if err != nil {
-		return createStringResponse(http.StatusBadRequest, "Not logged in")
+		sendEmptyResponse(conn, http.StatusUnauthorized)
+		return
 	}
 
-	urlParameters := GetUrlParameters(request)
-
-	parameterPath, pathExists := urlParameters["path"]
-	if !pathExists || strings.Contains(parameterPath, "..") {
-		return createStringResponse(http.StatusBadRequest, "bad path")
+	parameterPath, pathExists := request.UrlParameters["path"]
+	if !pathExists {
+		sendEmptyResponse(conn, http.StatusBadRequest)
+		return
 	}
+	parameterPath = CleanFilePath(parameterPath)
 
 	path := filepath.Join(UPLOAD_DIR, cookie.username, parameterPath)
 
 	info, err := os.Stat(path)
 	if err != nil {
-		return createStringResponse(http.StatusBadRequest, "Bad Request")
+		sendEmptyResponse(conn, http.StatusBadRequest)
+		return
 	}
 
-	if !info.IsDir() {
-		return createStringResponse(http.StatusBadRequest, "path not found")
+	isFile := !info.IsDir()
+	if isFile {
+		sendEmptyResponse(conn, http.StatusBadRequest)
+		return
 	}
 
-	filter := urlParameters["filter"]
+	filter := request.UrlParameters["filter"]
 
-	return CreateDirectoryStructure(path, parameterPath, filter)
+	json, err := CreateDirectoryJson(path, filter)
+	if err != nil {
+		sendEmptyResponse(conn, http.StatusInternalServerError)
+		return
+	}
+
+	sendJsonResponse(conn, http.StatusOK, json)
 }
 
-func LoginGetRoute() string {
+func LoginGetRoute(conn *bufio.ReadWriter) {
 	html, err := GetLoginPageHTML()
 	if err != nil {
-		return createStringResponse(http.StatusInternalServerError, "Internal Server Error")
+		sendEmptyResponse(conn, http.StatusInternalServerError)
+	} else {
+		sendHTMLResponse(conn, http.StatusOK, html)
 	}
-	return createHTMLResponse(http.StatusOK, html)
 }
 
-func LoginPostRoute(body string) string {
+func LoginPostRoute(conn *bufio.ReadWriter) {
+	bodyBytes := make([]byte, 1024)
+	bytes, _ := conn.Read(bodyBytes)
+	body := string(bodyBytes[:bytes])
+
 	form := ParseFormBody(body)
 
 	users, err := ParseUsersFile(USERS_FILE)
 	if err != nil {
-		return createStringResponse(http.StatusInternalServerError, "cannot parse users file")
+		sendEmptyResponse(conn, http.StatusInternalServerError)
+		return
 	}
 
-	found := Any(users, func(user []string) bool {
+	userFound := Any(users, func(user []string) bool {
 		return user[0] == form["username"] && user[1] == form["password"]
 	})
 
-	if found {
+	if userFound {
 		cookie := cookieStore.CreateCookie(form["username"])
-		return createHTMLResponseWithHeaders(http.StatusFound, "success", []string{fmt.Sprintf("Set-Cookie: drive=%s", cookie.value), "Location: /display?path=/"})
+		header1 := fmt.Sprintf("Set-Cookie: drive=%s", cookie.value)
+		header2 := "Location: /display?path=/"
+		sendEmptyResponseWithHeaders(conn, http.StatusFound, []string{header1, header2})
 	} else {
-		return createStringResponse(http.StatusBadRequest, "user not found")
+		sendEmptyResponse(conn, http.StatusBadRequest)
 	}
 }
 
-func DeleteRoute(request *Request) string {
+func DeleteRoute(request *Request, conn *bufio.ReadWriter) {
 	cookie, err := cookieStore.GetCookie(request)
 	if err != nil {
-		return createStringResponse(http.StatusBadRequest, "Not logged in")
+		sendEmptyResponse(conn, http.StatusBadRequest)
+		return
 	}
 
-	urlParameters := GetUrlParameters(request)
-
-	parameterPath, pathExists := urlParameters["path"]
+	parameterPath, pathExists := request.UrlParameters["path"]
 	if !pathExists || strings.Contains(parameterPath, "..") {
-		return createStringResponse(http.StatusBadRequest, "bad path")
+		sendEmptyResponse(conn, http.StatusBadRequest)
+		return
 	}
 
 	path := filepath.Join(UPLOAD_DIR, cookie.username, parameterPath)
 
 	_, err = os.Stat(path)
 	if err != nil {
-		return createStringResponse(http.StatusNotFound, "path not found")
+		sendEmptyResponse(conn, http.StatusNotFound)
+		return
 	}
 
 	err = os.RemoveAll(path)
 	if err != nil {
-		return createStringResponse(http.StatusInternalServerError, "cannot delete path")
+		sendEmptyResponse(conn, http.StatusInternalServerError)
 	}
 
-	return createStringResponse(http.StatusOK, "success")
+	sendEmptyResponse(conn, http.StatusOK)
 }
 
-func CreateDirectoryRoute(request *Request) string {
+func CreateDirectoryRoute(request *Request, conn *bufio.ReadWriter) {
 	cookie, err := cookieStore.GetCookie(request)
 	if err != nil {
-		return createStringResponse(http.StatusBadRequest, "Not logged in")
+		sendEmptyResponse(conn, http.StatusUnauthorized)
+		return
 	}
 
-	urlParameters := GetUrlParameters(request)
-
-	parameterPath, pathExists := urlParameters["path"]
+	parameterPath, pathExists := request.UrlParameters["path"]
 	if !pathExists || strings.Contains(parameterPath, "..") {
-		return createStringResponse(http.StatusBadRequest, "bad path")
+		sendEmptyResponse(conn, http.StatusBadRequest)
+		return
 	}
 
 	path := filepath.Join(UPLOAD_DIR, cookie.username, parameterPath)
 
 	_, err = os.Stat(path)
 	if !os.IsNotExist(err) {
-		return createStringResponse(http.StatusBadRequest, "path already exists")
+		sendEmptyResponse(conn, http.StatusBadRequest)
+		return
 	}
 
 	err = os.Mkdir(path, 0755)
 	if err != nil {
-		return createStringResponse(http.StatusInternalServerError, "cannot create directory")
+		sendEmptyResponse(conn, http.StatusInternalServerError)
+		return
 	}
 
-	return createStringResponse(http.StatusCreated, "directory created")
+	sendEmptyResponse(conn, http.StatusCreated)
 }
 
-func RenameRoute(request *Request) string {
+func RenameRoute(request *Request, conn *bufio.ReadWriter) {
 	cookie, err := cookieStore.GetCookie(request)
 	if err != nil {
-		return createStringResponse(http.StatusBadRequest, "Not logged in")
+		sendEmptyResponse(conn, http.StatusUnauthorized)
+		return
 	}
 
-	urlParameters := GetUrlParameters(request)
-
-	parameterOldPath, oldPathExists := urlParameters["old-path"]
+	parameterOldPath, oldPathExists := request.UrlParameters["old-path"]
 	if !oldPathExists || strings.Contains(parameterOldPath, "..") {
-		return createStringResponse(http.StatusBadRequest, "bad path")
+		sendEmptyResponse(conn, http.StatusBadRequest)
+		return
 	}
-
 	oldPath := filepath.Join(UPLOAD_DIR, cookie.username, parameterOldPath)
 
-	parameterNewPath, newPathExists := urlParameters["new-path"]
+	parameterNewPath, newPathExists := request.UrlParameters["new-path"]
 	if !newPathExists || strings.Contains(parameterNewPath, "..") {
-		return createStringResponse(http.StatusBadRequest, "bad path")
+		sendEmptyResponse(conn, http.StatusBadRequest)
+		return
 	}
-
 	newPath := filepath.Join(UPLOAD_DIR, cookie.username, parameterNewPath)
 
 	err = os.Rename(oldPath, newPath)
 	if err != nil {
-		return createStringResponse(http.StatusInternalServerError, "cannot rename file")
+		sendEmptyResponse(conn, http.StatusInternalServerError)
 	}
-	return createStringResponse(http.StatusOK, "success")
+	sendEmptyResponse(conn, http.StatusOK)
 }
