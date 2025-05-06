@@ -82,12 +82,43 @@
             background-color: #4CAF50;
             color: white;
         }
+        .modal {
+            position: fixed;
+            z-index: 1000;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+            width: 100%;
+            padding: 1rem;
+        }
+        .modal-content {
+            position: relative;
+            text-align: center;
+        }
+        .close {
+            position: absolute;
+            top: 8px;
+            right: 12px;
+            color: #aaa;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #000;
+        }
+
     </style>
 </head>
-<body onload="DisplayFiles('/')">
+<body onload="DisplayFiles('/', '')">
     <header>
         <h1>File Manager</h1>
     </header>
+
     <div class="container">
         <div class="filter-bar">
             <input type="text" id="filter" placeholder="Filter files...">
@@ -98,28 +129,80 @@
             <button id="createDirButton">Create Directory</button>
         </div>
     </div>
+
+    <div id="renameModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Rename File</h2>
+            <input type="text" id="newFileName" placeholder="Enter new file name">
+            <button id="confirmRename">Rename</button>
+            <button id="closeModal">Cancel</button>
+        </div>
+    </div>
+
+    <div id="createDirModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Create New Directory</h2>
+            <input type="text" id="newDirName" placeholder="Enter directory name">
+            <button id="createDirectoryButton" onclick="CreateDirectory(createDirectoryButtonElement.value)">Create</button>
+            <button id="closeDirModal">Cancel</button>
+        </div>
+    </div>
+
+    <div id="uploadModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Upload File</h2>
+            <form id="uploadForm" enctype="multipart/form-data" method="post">
+                <label>Select files for upload:</label>
+                <input style="display:inline;" type="file" id="files" name="files" multiple>
+                <input type="submit" value="Upload">
+                <button id="closeUploadModal">Cancel</button>
+            </form>
+        </div>
+    </div>
+
     <script>
         let currentDirectory = "/"
-        // Placeholder for dynamic functionality
-        document.getElementById('filter').addEventListener('input', function() {
-            const filterValue = this.value.toLowerCase();
-            const files = document.querySelectorAll('.file-item');
-            files.forEach(file => {
-                const fileName = file.querySelector('span').textContent.toLowerCase();
-                file.style.display = fileName.includes(filterValue) ? '' : 'none';
-            });
+        document.getElementById('uploadForm').action = `/upload?path=${currentDirectory}`
+        const createDirectoryButtonElement = document.getElementById('newDirName')
+
+        const filterElement = document.getElementById('filter');
+        filterElement.addEventListener('input', () => {
+            DisplayFiles(currentDirectory, filterElement.value)
         });
 
-        document.getElementById('uploadButton').addEventListener('click', function() {
-            alert('Upload functionality to be implemented.');
+        function ShowRenameModal (oldFilepath) {
+            document.getElementById('renameModal').style.display = 'block';
+            document.getElementById('newFileName').value = oldFilepath;
+
+            document.getElementById('confirmRename').onclick = async function() {
+                const newFileName = document.getElementById('newFileName').value;
+                await RenameFile(oldFilepath, newFileName);
+                CloseRenameModal()
+            };
+        }
+
+        function CloseRenameModal(){
+            document.getElementById('renameModal').style.display = 'none';
+        }
+
+        document.getElementById('closeModal').addEventListener('click', function () {
+            CloseRenameModal()
         });
 
-        document.getElementById('createDirButton').addEventListener('click', function() {
-            alert('Create directory functionality to be implemented.');
+        document.getElementById('uploadButton').addEventListener('click', function (){
+            document.getElementById('uploadModal').style.display = 'block';
+        })
+
+        document.getElementById('createDirButton').addEventListener('click', function () {
+            document.getElementById('createDirModal').style.display = 'block';
         });
 
-        async function DisplayFiles(directoryPath) {
-            let files = await fetch(`/directory?path=${directoryPath}`)
+        document.getElementById('closeDirModal').addEventListener('click', function () {
+            document.getElementById('createDirModal').style.display = 'none';
+        });
+
+        async function DisplayFiles(directoryPath, filter) {
+            let files = await fetch(`/directory?path=${directoryPath}&filter=${filter}`)
             let filesJson = await files.json();
             let filesHtml = filesJson.map(JsonFileToTableRow)
             let fullHtml = filesHtml.join("\n")
@@ -132,7 +215,7 @@
                 <span>${file.Name}</span>
                 <div class="file-actions">
                     <button class="download"><a href="/download?path=${fileUrl}">Download</a></button>
-                    <button class="rename">Rename</button>
+                    <button class="rename" onclick="ShowRenameModal('${fileUrl}')">Rename</button>
                     <button class="delete" onclick="DeleteFile('${fileUrl}')">Delete</button>
                 </div>
             </li>`
@@ -141,9 +224,52 @@
         async function DeleteFile(filePath) {
             let result = await fetch(`/delete?path=${filePath}`)
             if(result.status === 200){
-                await DisplayFiles(currentDirectory)
+                await DisplayFiles(currentDirectory, filterElement.value)
             }
         }
+
+        async function RenameFile(oldFilename, newFilename) {
+            let result = await fetch(`/rename?old=${oldFilename}&new=${newFilename}`)
+            if(result.status === 200){
+                await DisplayFiles(currentDirectory, filterElement.value)
+            }
+        }
+
+        async function CreateDirectory(name){
+            let result = await fetch(`/create-directory?path=${name}`)
+            if(result.status === 200){
+                await DisplayFiles(currentDirectory, filterElement.value)
+            }
+            console.log(result.status)
+            document.getElementById('createDirModal').style.display = 'none';
+        }
+
+        document.getElementById('uploadForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const form = e.target;
+            const formData = new FormData(form);
+
+            fetch(`/upload?path=${currentDirectory}`, { method: 'POST', body: formData })
+                .then(response => {
+                    if (response.ok) {
+                        console.log('Files uploaded successfully!')
+                        form.reset();
+                        DisplayFiles(currentDirectory, filterElement.value)
+                    } else {
+                        console.log('Upload failed.')
+                    }
+                })
+                .catch(error => {
+                    console.error('Error uploading files:', error);
+                });
+
+            document.getElementById('uploadModal').style.display = 'none';
+        });
+
+        document.getElementById('closeUploadModal').addEventListener('click', function (){
+            document.getElementById('uploadModal').style.display = 'none';
+        })
     </script>
 </body>
 </html>

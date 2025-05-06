@@ -191,7 +191,7 @@ func CreateDirectoryRoute(request *Request, conn *bufio.ReadWriter) {
 		return
 	}
 
-	sendEmptyResponse(conn, http.StatusCreated)
+	sendEmptyResponse(conn, http.StatusOK)
 }
 
 func RenameRoute(request *Request, conn *bufio.ReadWriter) {
@@ -201,14 +201,14 @@ func RenameRoute(request *Request, conn *bufio.ReadWriter) {
 		return
 	}
 
-	parameterOldPath, oldPathExists := request.UrlParameters["old-path"]
+	parameterOldPath, oldPathExists := request.UrlParameters["old"]
 	if !oldPathExists || strings.Contains(parameterOldPath, "..") {
 		sendEmptyResponse(conn, http.StatusBadRequest)
 		return
 	}
 	oldPath := filepath.Join(UPLOAD_DIR, cookie.username, parameterOldPath)
 
-	parameterNewPath, newPathExists := request.UrlParameters["new-path"]
+	parameterNewPath, newPathExists := request.UrlParameters["new"]
 	if !newPathExists || strings.Contains(parameterNewPath, "..") {
 		sendEmptyResponse(conn, http.StatusBadRequest)
 		return
