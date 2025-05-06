@@ -127,6 +127,7 @@
         <div class="upload-area">
             <button id="uploadButton">Upload File</button>
             <button id="createDirButton">Create Directory</button>
+            <button id="backButton">Back</button>
         </div>
     </div>
 
@@ -162,7 +163,6 @@
 
     <script>
         let currentDirectory = "/"
-        document.getElementById('uploadForm').action = `/upload?path=${currentDirectory}`
         const createDirectoryButtonElement = document.getElementById('newDirName')
 
         const filterElement = document.getElementById('filter');
@@ -189,6 +189,10 @@
             CloseRenameModal()
         });
 
+        document.getElementById('backButton').addEventListener('click', async function () {
+            await AccessParentDirectory()
+        });
+
         document.getElementById('uploadButton').addEventListener('click', function (){
             document.getElementById('uploadModal').style.display = 'block';
         })
@@ -210,15 +214,36 @@
         }
 
         function JsonFileToTableRow(file) {
+            let html = ''
             let fileUrl = currentDirectory + file.Name
-            return `<li class="file-item">
-                <span>${file.Name}</span>
+            if(file.IsDirectory){
+                html = `<li class="file-item" onclick="AccessDirectory('${file.Name}')">`
+            }else{
+                html = `<li class="file-item">`
+            }
+            return html +
+                `<span>${file.Name}</span>
                 <div class="file-actions">
                     <button class="download"><a href="/download?path=${fileUrl}">Download</a></button>
                     <button class="rename" onclick="ShowRenameModal('${fileUrl}')">Rename</button>
                     <button class="delete" onclick="DeleteFile('${fileUrl}')">Delete</button>
                 </div>
             </li>`
+        }
+
+        async function AccessDirectory(directoryName) {
+            currentDirectory = currentDirectory + directoryName + "/"
+            filterElement.value = ''
+            await DisplayFiles(currentDirectory, '')
+        }
+
+        async function AccessParentDirectory(){
+            currentDirectory = GetParentDirectory(currentDirectory)
+            if (currentDirectory === ""){
+                currentDirectory = '/'
+            }
+            filterElement.value = ''
+            await DisplayFiles(currentDirectory, '')
         }
 
         async function DeleteFile(filePath) {
@@ -256,8 +281,6 @@
                         console.log('Files uploaded successfully!')
                         form.reset();
                         DisplayFiles(currentDirectory, filterElement.value)
-                    } else {
-                        console.log('Upload failed.')
                     }
                 })
                 .catch(error => {
@@ -266,6 +289,13 @@
 
             document.getElementById('uploadModal').style.display = 'none';
         });
+
+        function GetParentDirectory(path) {
+            const x = path.split('/')
+            const y = x.slice(0, x.length-2)
+            const z = y.join("/")
+            return z === "" ? '/' : z
+        }
 
         document.getElementById('closeUploadModal').addEventListener('click', function (){
             document.getElementById('uploadModal').style.display = 'none';
