@@ -35,12 +35,15 @@ func main() {
 	USERS_FILE = os.Args[4]
 	CERTIFICATE_FILE = os.Args[5]
 	KEY_FILE = os.Args[6]
+	log.Println("Starting with ", HOST, PORT, UPLOAD_DIR, USERS_FILE, CERTIFICATE_FILE, KEY_FILE)
 
+	log.Println("Parsing users file...")
 	users, err := ParseUsersFile(USERS_FILE)
 	if err != nil {
 		return
 	}
 
+	log.Print("Creating directory for users")
 	for _, user := range users {
 		path := filepath.Join(UPLOAD_DIR, user[0])
 		_, err := os.Stat(path)
@@ -53,48 +56,56 @@ func main() {
 		}
 	}
 
+	log.Println("Reading SSL files...")
 	cert, err := tls.LoadX509KeyPair(CERTIFICATE_FILE, KEY_FILE)
 	if err != nil {
 		log.Fatal("Error loading certificate. ", err)
 	}
-
 	tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}}
 
+	log.Println("Starting listening at", HOST+":"+PORT, "...")
 	listener, err := tls.Listen("tcp", HOST+":"+PORT, tlsCfg)
 	if err != nil {
+		log.Println("Cannot listen,", err.Error())
 		return
 	}
 	defer listener.Close()
 
-	fmt.Printf("Server listening on %s:%s\n", HOST, PORT)
 	for {
+		log.Println("Waiting for connection...")
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Printf("Error accepting connection: %v\n", err)
+			log.Println("Error accepting connection:", err)
 			continue
 		}
 
-		fmt.Printf("Accepted connection from %s\n", conn.RemoteAddr())
+		log.Println("Accepted connection from", conn.RemoteAddr())
 		readWriter := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
+		log.Println("Parsing request...")
 		request, err := ParseRequest(readWriter)
 		if err != nil {
+			log.Println("Request could not be parsed, closing...")
 			_ = conn.Close()
 			continue
 		}
 
+		log.Println("Checking for bruteforce attempt...")
 		if bruteForceGuard.IsBruteForceAttempt(conn.RemoteAddr()) {
+			log.Println("Bruteforce detected...")
 			return
 		}
 
-		handleRequest(&request, readWriter)
+		log.Println("Handleing request...")
+		HandleRequest(&request, readWriter)
 
+		log.Println("Flushing and closing connection...")
 		_ = readWriter.Flush()
 		_ = conn.Close()
 	}
 }
 
-func handleRequest(request *Request, conn *bufio.ReadWriter) {
+func HandleRequest(request *Request, conn *bufio.ReadWriter) {
 	urlPath := GetUrlPath(request)
 
 	if strings.Contains(urlPath, "..") {
@@ -104,9 +115,11 @@ func handleRequest(request *Request, conn *bufio.ReadWriter) {
 
 	if urlPath == "/log" {
 		if request.Method == "GET" {
+			log.Println("Login get route...")
 			LoginGetRoute(conn)
 			return
 		} else if request.Method == "POST" {
+			log.Println("Login post route...")
 			LoginPostRoute(conn)
 			return
 		}
@@ -114,18 +127,20 @@ func handleRequest(request *Request, conn *bufio.ReadWriter) {
 
 	_, err := cookieStore.GetCookie(request)
 	if err != nil {
+		Redirect(conn, "/log")
 		return
 	}
 
 	switch true {
 	case urlPath == "/home" && request.Method == "GET":
 		page, _ := GetHomePageHTML()
-		_, _ = conn.WriteString(page)
+		sendHTMLResponse(conn, http.StatusOK, page)
 	case urlPath == "/download" && request.Method == "GET":
 		DownloadRoute(request, conn)
 	case urlPath == "/upload" && request.Method == "POST":
 		UploadRoute(request, conn)
 	case urlPath == "/directory" && request.Method == "GET":
+		log.Println("Getting file structure...")
 		GetDirectoryStructureRoute(request, conn)
 	case urlPath == "/delete" && request.Method == "GET":
 		DeleteRoute(request, conn)

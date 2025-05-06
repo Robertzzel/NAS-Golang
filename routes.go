@@ -128,7 +128,7 @@ func LoginPostRoute(conn *bufio.ReadWriter) {
 	if userFound {
 		cookie := cookieStore.CreateCookie(form["username"])
 		header1 := fmt.Sprintf("Set-Cookie: drive=%s", cookie.value)
-		header2 := "Location: /display?path=/"
+		header2 := "Location: /home"
 		sendEmptyResponseWithHeaders(conn, http.StatusFound, []string{header1, header2})
 	} else {
 		sendEmptyResponse(conn, http.StatusBadRequest)

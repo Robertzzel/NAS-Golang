@@ -1,3 +1,3 @@
 openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365 -subj "/C=RO/ST=Bucuresti/L=Bucuresti/O=CompaniaMea/CN=exemplu.ro"
-go build -o server main.go request.go responses.go utils.go routes.go
-./server
+go build -o server main.go request.go responses.go utils.go routes.go bruteforce.go cookies.go
+./server localhost 80 files users.csv cert.pem key.pem

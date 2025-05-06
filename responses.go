@@ -52,6 +52,10 @@ func sendHTMLResponse(conn *bufio.ReadWriter, status int, body string) {
 	_, _ = conn.Write([]byte(body))
 }
 
+func Redirect(conn *bufio.ReadWriter, to string) {
+	sendEmptyResponseWithHeaders(conn, http.StatusFound, []string{fmt.Sprintf("Location: %s", to)})
+}
+
 func sendHTMLResponseWithHeaders(conn *bufio.ReadWriter, status int, body string, headers []string) {
 	combinedHeaders := ""
 	for _, header := range headers {
