@@ -40,6 +40,17 @@
             padding: 0;
             margin: 0;
         }
+        .directory-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem;
+            border-bottom: 1px solid #ddd;
+            background: #eeffee;
+        }
+        .directory-item:last-child {
+            border-bottom: none;
+        }
         .file-item {
             display: flex;
             justify-content: space-between;
@@ -170,20 +181,7 @@
             DisplayFiles(currentDirectory, filterElement.value)
         });
 
-        function ShowRenameModal (oldFilepath) {
-            document.getElementById('renameModal').style.display = 'block';
-            document.getElementById('newFileName').value = oldFilepath;
 
-            document.getElementById('confirmRename').onclick = async function() {
-                const newFileName = document.getElementById('newFileName').value;
-                await RenameFile(oldFilepath, newFileName);
-                CloseRenameModal()
-            };
-        }
-
-        function CloseRenameModal(){
-            document.getElementById('renameModal').style.display = 'none';
-        }
 
         document.getElementById('closeModal').addEventListener('click', function () {
             CloseRenameModal()
@@ -194,16 +192,33 @@
         });
 
         document.getElementById('uploadButton').addEventListener('click', function (){
-            document.getElementById('uploadModal').style.display = 'block';
+            ShowUploadModal()
         })
 
         document.getElementById('createDirButton').addEventListener('click', function () {
-            document.getElementById('createDirModal').style.display = 'block';
+            ShowCreateDirModal()
         });
 
         document.getElementById('closeDirModal').addEventListener('click', function () {
-            document.getElementById('createDirModal').style.display = 'none';
+            CloseCreateDirModal()
         });
+
+        function CloseRenameModal() {document.getElementById('renameModal').style.display = 'none';}
+        function ShowRenameModal(oldFilepath) {
+            document.getElementById('renameModal').style.display = 'block';
+            document.getElementById('newFileName').value = oldFilepath;
+            document.getElementById('confirmRename').onclick = async function() {
+                const newFileName = document.getElementById('newFileName').value;
+                await RenameFile(oldFilepath, newFileName);
+                CloseRenameModal()
+            };
+        }
+
+        function CloseCreateDirModal() {document.getElementById('createDirModal').style.display = 'none';}
+        function ShowCreateDirModal() {document.getElementById('createDirModal').style.display = 'block';}
+
+        function ShowUploadModal() {document.getElementById('uploadModal').style.display = 'block';}
+        function CloseUploadModal() {document.getElementById('uploadModal').style.display = 'none';}
 
         async function DisplayFiles(directoryPath, filter) {
             let files = await fetch(`/directory?path=${directoryPath}&filter=${filter}`)
@@ -217,7 +232,7 @@
             let html = ''
             let fileUrl = currentDirectory + file.Name
             if(file.IsDirectory){
-                html = `<li class="file-item" onclick="AccessDirectory('${file.Name}')">`
+                html = `<li class="directory-item" onclick="AccessDirectory('${file.Name}')">`
             }else{
                 html = `<li class="file-item">`
             }
@@ -287,18 +302,18 @@
                     console.error('Error uploading files:', error);
                 });
 
-            document.getElementById('uploadModal').style.display = 'none';
+            CloseUploadModal()
         });
 
         function GetParentDirectory(path) {
-            const x = path.split('/')
-            const y = x.slice(0, x.length-2)
-            const z = y.join("/")
-            return z === "" ? '/' : z
+            const parts = path.split('/')
+            const partsWithoutParent = parts.slice(0, parts.length-2)
+            const joinedParts = partsWithoutParent.join("/")
+            return joinedParts === "" ? '/' : joinedParts
         }
 
         document.getElementById('closeUploadModal').addEventListener('click', function (){
-            document.getElementById('uploadModal').style.display = 'none';
+            CloseUploadModal()
         })
     </script>
 </body>
