@@ -40,17 +40,6 @@
             padding: 0;
             margin: 0;
         }
-        .directory-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.5rem;
-            border-bottom: 1px solid #ddd;
-            background: #eeffee;
-        }
-        .directory-item:last-child {
-            border-bottom: none;
-        }
         .file-item {
             display: flex;
             justify-content: space-between;
@@ -111,23 +100,15 @@
             position: relative;
             text-align: center;
         }
-        .close {
-            position: absolute;
-            top: 8px;
-            right: 12px;
-            color: #aaa;
-            font-size: 20px;
-            cursor: pointer;
+        a {
+            all: unset;
+            cursor: pointer; /* Optional: retains pointer behavior */
         }
-        .close:hover {
-            color: #000;
-        }
-
     </style>
 </head>
 <body onload="DisplayFiles('/', '')">
     <header>
-        <h1>File Manager</h1>
+        <h1 id="titleHeader">File Manager</h1>
     </header>
 
     <div class="container">
@@ -195,8 +176,6 @@
             DisplayFiles(currentDirectory, filterElement.value)
         });
 
-
-
         document.getElementById('closeModal').addEventListener('click', function () {
             CloseRenameModal()
         });
@@ -243,18 +222,12 @@
         }
 
         function JsonFileToTableRow(file) {
-            let html = ''
             let fileUrl = currentDirectory + file.Name
-            if(file.IsDirectory){
-                html = `<li class="directory-item" onclick="AccessDirectory('${file.Name}')">`
-            }else{
-                html = `<li class="file-item">`
-            }
-            return html +
-                `<span>${file.Name}</span>
+            return `
+            <li class="file-item">
+                <span>${file.Name}</span>
                 <div class="file-actions">
-                    <a href="https://www.flaticon.com/free-icons/down-arrow" title="down arrow icons"></a>
-
+                    ${file.IsDirectory ? GetDirectoryAccessButton(`${file.Name}`): ""}
                     <button class="download">
                         <a href="/download?path=${fileUrl}">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download" viewBox="0 0 16 16">
@@ -322,18 +295,34 @@
             const form = e.target;
             const formData = new FormData(form);
 
-            fetch(`/upload?path=${currentDirectory}`, { method: 'POST', body: formData })
-                .then(response => {
-                    if (response.ok) {
-                        console.log('Files uploaded successfully!')
-                        form.reset();
-                        DisplayFiles(currentDirectory, filterElement.value)
-                    }
-                })
-                .catch(error => {
-                    console.error('Error uploading files:', error);
-                });
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `/upload?path=${currentDirectory}`);
 
+            let titleElement = document.getElementById('titleHeader')
+            xhr.upload.onprogress = function(event) {
+                if (event.lengthComputable) {
+                    titleElement.textContent = `Uploaded ${event.loaded / event.total * 100}`;
+                }
+            };
+
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    titleElement.textContent = 'Files uploaded successfully!';
+                    form.reset();
+                    DisplayFiles(currentDirectory, filterElement.value);
+                } else {
+                    console.error('Upload failed:', xhr.statusText);
+                }
+                CloseUploadModal();
+            };
+
+            // Error
+            xhr.onerror = function() {
+                console.error('Error uploading files.');
+                CloseUploadModal();
+            };
+
+            xhr.send(formData);
             CloseUploadModal()
         });
 
@@ -342,6 +331,14 @@
             const partsWithoutParent = parts.slice(0, parts.length-2)
             const joinedParts = partsWithoutParent.join("/")
             return joinedParts === "" ? '/' : joinedParts
+        }
+
+        function GetDirectoryAccessButton(name) {
+            return `<button class="rename" onclick="AccessDirectory('${name}')">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-folder" viewBox="0 0 16 16">
+                          <path d="M.54 3.87.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.826a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31zM2.19 4a1 1 0 0 0-.996 1.09l.637 7a1 1 0 0 0 .995.91h10.348a1 1 0 0 0 .995-.91l.637-7A1 1 0 0 0 13.81 4zm4.69-1.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981l.006.139q.323-.119.684-.12h5.396z"/>
+                        </svg>
+                    </button>`
         }
 
         document.getElementById('closeUploadModal').addEventListener('click', function (){
