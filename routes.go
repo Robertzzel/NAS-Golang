@@ -159,6 +159,7 @@ func DeleteRoute(request *Request, conn *bufio.ReadWriter) {
 	err = os.RemoveAll(path)
 	if err != nil {
 		sendEmptyResponse(conn, http.StatusInternalServerError)
+		return
 	}
 
 	sendEmptyResponse(conn, http.StatusOK)

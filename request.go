@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,13 +38,27 @@ func getUrlParameters(request *Request) map[string]string {
 	for _, param := range strings.Split(urlParts[1], "&") {
 		paramParts := strings.Split(param, "=")
 		if len(paramParts) == 2 {
-			p0 := strings.ReplaceAll(strings.TrimSpace(paramParts[0]), "%20", " ")
-			p1 := strings.ReplaceAll(strings.TrimSpace(paramParts[1]), "%20", " ")
-			result[p0] = p1
+			name, err := decodeURLString(strings.TrimSpace(paramParts[0]))
+			if err != nil {
+				continue
+			}
+			value, err := decodeURLString(strings.TrimSpace(paramParts[1]))
+			if err != nil {
+				continue
+			}
+			result[name] = value
 		}
 	}
 
 	return result
+}
+
+func decodeURLString(encoded string) (string, error) {
+	decoded, err := url.QueryUnescape(encoded)
+	if err != nil {
+		return "", err
+	}
+	return decoded, nil
 }
 
 func ParseRequest(reader *bufio.ReadWriter) (Request, error) {

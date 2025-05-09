@@ -26,6 +26,7 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
         .filter-bar {
+            height: 5vh;
             display: flex;
             margin-bottom: 1rem;
         }
@@ -36,6 +37,8 @@
             border-radius: 4px;
         }
         .file-list {
+            overflow-y: auto;
+            height: 70vh;
             list-style: none;
             padding: 0;
             margin: 0;
@@ -104,11 +107,12 @@
             all: unset;
             cursor: pointer; /* Optional: retains pointer behavior */
         }
+        #hea
     </style>
 </head>
-<body onload="DisplayFiles('/', '')">
-    <header>
-        <h1 id="titleHeader">File Manager</h1>
+<body onload="OnPageLoad()">
+    <header id="headerArea">
+        <p id="titleHeader">File Manager</p>
     </header>
 
     <div class="container">
@@ -150,7 +154,7 @@
         <div class="modal-content">
             <h2>Create New Directory</h2>
             <input type="text" id="newDirName" placeholder="Enter directory name">
-            <button id="createDirectoryButton" onclick="CreateDirectory(createDirectoryButtonElement.value)">Create</button>
+            <button id="createDirectoryButton" onclick="OnCreateDirectory()">Create</button>
             <button id="closeDirModal">Cancel</button>
         </div>
     </div>
@@ -169,41 +173,59 @@
 
     <script>
         let currentDirectory = "/"
+        let serverFiles = [];
         const createDirectoryButtonElement = document.getElementById('newDirName')
-
         const filterElement = document.getElementById('filter');
-        filterElement.addEventListener('input', () => {
-            DisplayFiles(currentDirectory, filterElement.value)
-        });
 
-        document.getElementById('closeModal').addEventListener('click', function () {
-            CloseRenameModal()
-        });
+        async function OnPageLoad() {
+            await UpdateServerFiles()
+            UpdateDisplayedFiles()
+            SetStatusMessage(currentDirectory)
+        }
 
-        document.getElementById('backButton').addEventListener('click', async function () {
-            await AccessParentDirectory()
-        });
+        async function UpdateServerFiles() {
+            let files = await fetch(`/directory?path=${encodeURIComponent(currentDirectory)}&filter=`)
+            if(files.status !== 200) {
+                SetStatusMessage(`Error fetching files from server: ${files.status}`)
+                serverFiles = []
+            } else {
+                serverFiles = await files.json()
+            }
+            serverFiles = serverFiles.map((file, index) => ({"Name" : file.Name, "IsDirectory" : file.IsDirectory, "Size" : file.Size, "Index" : index}))
+        }
 
-        document.getElementById('uploadButton').addEventListener('click', function (){
-            ShowUploadModal()
-        })
+        function SetStatusMessage(message) {
+            document.getElementById('titleHeader').textContent = message
+        }
 
-        document.getElementById('createDirButton').addEventListener('click', function () {
-            ShowCreateDirModal()
-        });
+        function UpdateDisplayedFiles() {
+            let filesHtml = serverFiles
+                .filter(file => file.Name.toLowerCase().includes(filterElement.value.toLowerCase()))
+                .map(JsonFileToTableRow)
+            document.getElementById("fileList").innerHTML = filesHtml.join("\n")
+        }
 
-        document.getElementById('closeDirModal').addEventListener('click', function () {
-            CloseCreateDirModal()
-        });
+        filterElement.addEventListener('input', UpdateDisplayedFiles);
+        document.getElementById('closeModal').addEventListener('click', CloseRenameModal);
+        document.getElementById('backButton').addEventListener('click', AccessParentDirectory);
+        document.getElementById('uploadButton').addEventListener('click', ShowUploadModal)
+        document.getElementById('createDirButton').addEventListener('click', ShowCreateDirModal);
+        document.getElementById('closeDirModal').addEventListener('click', CloseCreateDirModal);
 
         function CloseRenameModal() {document.getElementById('renameModal').style.display = 'none';}
-        function ShowRenameModal(oldFilepath) {
+        function ShowRenameModal(fileIndex) {
+            const oldFilepath = GetFileNameByIndex(fileIndex)
+            if(oldFilepath === null) {
+                SetStatusMessage(`File not found: ${fileIndex}`)
+                return
+            }
             document.getElementById('renameModal').style.display = 'block';
             document.getElementById('newFileName').value = oldFilepath;
             document.getElementById('confirmRename').onclick = async function() {
-                const newFileName = document.getElementById('newFileName').value;
-                await RenameFile(oldFilepath, newFileName);
                 CloseRenameModal()
+                const newFileName = document.getElementById('newFileName').value;
+
+                await OnRenameFile(oldFilepath, newFileName);
             };
         }
 
@@ -212,14 +234,6 @@
 
         function ShowUploadModal() {document.getElementById('uploadModal').style.display = 'block';}
         function CloseUploadModal() {document.getElementById('uploadModal').style.display = 'none';}
-
-        async function DisplayFiles(directoryPath, filter) {
-            let files = await fetch(`/directory?path=${directoryPath}&filter=${filter}`)
-            let filesJson = await files.json();
-            let filesHtml = filesJson.map(JsonFileToTableRow)
-            let fullHtml = filesHtml.join("\n")
-            document.getElementById("fileList").innerHTML = fullHtml
-        }
 
         function JsonFileToTableRow(file) {
             let fileUrl = currentDirectory + file.Name
@@ -236,13 +250,13 @@
                             </svg>
                         </a>
                     </button>
-                    <button class="rename" onclick="ShowRenameModal('${fileUrl}')">
+                    <button class="rename" onclick="ShowRenameModal(${file.Index})">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
                           <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/>
                           <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"/>
                         </svg>
                     </button>
-                    <button class="delete" onclick="DeleteFile('${fileUrl}')">
+                    <button class="delete" onclick="OnDeleteFile(${file.Index})">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-lg" viewBox="0 0 16 16">
                           <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z"/>
                         </svg>
@@ -251,10 +265,17 @@
             </li>`
         }
 
-        async function AccessDirectory(directoryName) {
+        async function OnAccessDirectory(fileIndex) {
+            const directoryName = GetFileNameByIndex(fileIndex)
+            if(directoryName === null) {
+                SetStatusMessage(`File not found: ${fileIndex}`)
+                return
+            }
             currentDirectory = currentDirectory + directoryName + "/"
             filterElement.value = ''
-            await DisplayFiles(currentDirectory, '')
+            await UpdateServerFiles()
+            UpdateDisplayedFiles()
+            SetStatusMessage(currentDirectory)
         }
 
         async function AccessParentDirectory(){
@@ -263,30 +284,56 @@
                 currentDirectory = '/'
             }
             filterElement.value = ''
-            await DisplayFiles(currentDirectory, '')
+            await UpdateServerFiles()
+            UpdateDisplayedFiles()
+            SetStatusMessage(currentDirectory)
         }
 
-        async function DeleteFile(filePath) {
-            let result = await fetch(`/delete?path=${filePath}`)
+        async function OnDeleteFile(fileIndex) {
+            const filePath = GetFileNameByIndex(fileIndex)
+            if(filePath === null) {
+                SetStatusMessage(`File not found: ${fileIndex}`)
+                return
+            }
+            SetStatusMessage(`Deleting file: ${filePath}`)
+            let result = await fetch(`/delete?path=${encodeURIComponent(filePath)}`)
             if(result.status === 200){
-                await DisplayFiles(currentDirectory, filterElement.value)
+                let fileName = GetFileName(filePath)
+                serverFiles = serverFiles.filter(file => file.Name !== fileName)
+                UpdateDisplayedFiles()
+                SetStatusMessage(currentDirectory)
+            } else {
+                SetStatusMessage(`Error deleting file: ${result.status}`)}
+        }
+
+        async function OnRenameFile(oldFilename, newFilename) {
+            SetStatusMessage(`Renaming file: ${oldFilename} to ${newFileName}`)
+            let result = await fetch(`/rename?old=${encodeURIComponent(oldFilename)}&new=${encodeURIComponent(newFilename)}`)
+            if(result.status === 200){
+                serverFiles.forEach(file => {
+                    if(file.Name === GetFileName(oldFilename)){
+                        file.Name = GetFileName(newFilename)
+                    }
+                })
+                UpdateDisplayedFiles()
+                SetStatusMessage(currentDirectory)
+            } else {
+                SetStatusMessage(`Error renaming file: ${result.status}`)
             }
         }
 
-        async function RenameFile(oldFilename, newFilename) {
-            let result = await fetch(`/rename?old=${oldFilename}&new=${newFilename}`)
-            if(result.status === 200){
-                await DisplayFiles(currentDirectory, filterElement.value)
+        async function OnCreateDirectory() {
+            const name = createDirectoryButtonElement.value
+            CloseCreateDirModal()
+            SetStatusMessage(`Creating directory: ${name}`)
+            let result = await fetch(`/create-directory?path=${encodeURIComponent(name)}`)
+            if(result.status === 200) {
+                serverFiles.push({Name: name, IsDirectory: true, Size: 0})
+                UpdateDisplayedFiles()
+                SetStatusMessage(currentDirectory)
+            } else {
+                SetStatusMessage(`Error creating directory: ${result.status}`)
             }
-        }
-
-        async function CreateDirectory(name){
-            let result = await fetch(`/create-directory?path=${name}`)
-            if(result.status === 200){
-                await DisplayFiles(currentDirectory, filterElement.value)
-            }
-            console.log(result.status)
-            document.getElementById('createDirModal').style.display = 'none';
         }
 
         document.getElementById('uploadForm').addEventListener('submit', function(e) {
@@ -309,7 +356,8 @@
                 if (xhr.status === 200) {
                     titleElement.textContent = 'Files uploaded successfully!';
                     form.reset();
-                    DisplayFiles(currentDirectory, filterElement.value);
+                    UpdateServerFiles()
+                    UpdateDisplayedFiles()
                 } else {
                     console.error('Upload failed:', xhr.statusText);
                 }
@@ -333,8 +381,13 @@
             return joinedParts === "" ? '/' : joinedParts
         }
 
-        function GetDirectoryAccessButton(name) {
-            return `<button class="rename" onclick="AccessDirectory('${name}')">
+        function GetFileName(path) {
+            const parts = path.split('/')
+            return parts[parts.length-1]
+        }
+
+        function GetDirectoryAccessButton(fileIndex) {
+            return `<button class="rename" onclick="OnAccessDirectory(${fileIndex})">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-folder" viewBox="0 0 16 16">
                           <path d="M.54 3.87.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.826a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31zM2.19 4a1 1 0 0 0-.996 1.09l.637 7a1 1 0 0 0 .995.91h10.348a1 1 0 0 0 .995-.91l.637-7A1 1 0 0 0 13.81 4zm4.69-1.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981l.006.139q.323-.119.684-.12h5.396z"/>
                         </svg>
@@ -344,6 +397,14 @@
         document.getElementById('closeUploadModal').addEventListener('click', function (){
             CloseUploadModal()
         })
+
+        function GetFileNameByIndex(index) {
+            let foundFile = serverFiles.filter(file => file.Index === index)
+            if (foundFile.length === 0) {
+                return null
+            }
+            return foundFile[0].Name
+        }
     </script>
 </body>
 </html>
