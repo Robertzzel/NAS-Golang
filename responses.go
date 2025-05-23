@@ -10,10 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 )
 
-func sendEmptyResponse(conn *bufio.ReadWriter, status int) {
+func sendEmptyResponse(conn *bufio.Writer, status int) {
 	header := fmt.Sprintf(
 		"HTTP/1.1 %d %s\r\nContent-Type: text/plain\r\nContent-Length: 0\r\n\r\n",
 		status, http.StatusText(status),
@@ -21,7 +20,7 @@ func sendEmptyResponse(conn *bufio.ReadWriter, status int) {
 	_, _ = conn.Write([]byte(header))
 }
 
-func sendEmptyResponseWithHeaders(conn *bufio.ReadWriter, status int, headers []string) {
+func sendEmptyResponseWithHeaders(conn *bufio.Writer, status int, headers []string) {
 	combinedHeaders := ""
 	for _, header := range headers {
 		combinedHeaders += fmt.Sprintf("%s\r\n", header)
@@ -34,7 +33,7 @@ func sendEmptyResponseWithHeaders(conn *bufio.ReadWriter, status int, headers []
 	_, _ = conn.Write([]byte(header))
 }
 
-func sendJsonResponse(conn *bufio.ReadWriter, status int, json []byte) {
+func sendJsonResponse(conn *bufio.Writer, status int, json []byte) {
 	header := fmt.Sprintf(
 		"HTTP/1.1 %d %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n",
 		status, http.StatusText(status), len(json),
@@ -43,7 +42,7 @@ func sendJsonResponse(conn *bufio.ReadWriter, status int, json []byte) {
 	_, _ = conn.Write(json)
 }
 
-func sendHTMLResponse(conn *bufio.ReadWriter, status int, body string) {
+func sendHTMLResponse(conn *bufio.Writer, status int, body string) {
 	header := fmt.Sprintf(
 		"HTTP/1.1 %d %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n",
 		status, http.StatusText(status), len(body),
@@ -52,36 +51,17 @@ func sendHTMLResponse(conn *bufio.ReadWriter, status int, body string) {
 	_, _ = conn.Write([]byte(body))
 }
 
-func Redirect(conn *bufio.ReadWriter, to string) {
+func Redirect(conn *bufio.Writer, to string) {
 	sendEmptyResponseWithHeaders(conn, http.StatusFound, []string{fmt.Sprintf("Location: %s", to)})
 }
 
-func sendHTMLResponseWithHeaders(conn *bufio.ReadWriter, status int, body string, headers []string) {
-	combinedHeaders := ""
-	for _, header := range headers {
-		combinedHeaders += fmt.Sprintf("%s\r\n", header)
-	}
-	combinedHeaders += "\r\n"
-
-	header := fmt.Sprintf(
-		"HTTP/1.1 %d %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\n%s\r\n",
-		status, http.StatusText(status), len(body), combinedHeaders,
-	)
-	_, _ = conn.Write([]byte(header))
-	_, _ = conn.Write([]byte(body))
-}
-
-func CreateDirectoryJson(path, filter string) ([]byte, error) {
+func CreateDirectoryJson(path string) ([]byte, error) {
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return []byte{}, err
 	}
 
-	filteredEntries := Filter(entries, func(entry os.DirEntry) bool {
-		return strings.Contains(entry.Name(), filter)
-	})
-
-	files := Map(filteredEntries, func(entry os.DirEntry) FileJson {
+	files := Map(entries, func(entry os.DirEntry) FileJson {
 		return FileJsonFromDirEntry(entry)
 	})
 	marsh, err := json.Marshal(files)
@@ -102,7 +82,7 @@ func FileJsonFromDirEntry(file os.DirEntry) FileJson {
 	return FileJson{IsDirectory: file.IsDir(), Name: file.Name(), Size: info.Size()}
 }
 
-func SendFile(conn *bufio.ReadWriter, path string) {
+func SendFile(conn *bufio.Writer, path string) {
 	file, err := os.Open(path)
 	if err != nil {
 		sendEmptyResponse(conn, http.StatusNotFound)
@@ -125,7 +105,7 @@ func SendFile(conn *bufio.ReadWriter, path string) {
 	_, _ = io.Copy(conn, file)
 }
 
-func SendDirectoryAsZip(inputDirectory string, writer *bufio.ReadWriter) {
+func SendDirectoryAsZip(inputDirectory string, writer *bufio.Writer) {
 	_, _ = writer.WriteString("HTTP/1.1 200 OK\r\n")
 	_, _ = writer.WriteString("Content-Type: application/octet-stream\r\n")
 	_, _ = writer.WriteString(fmt.Sprintf("Content-Disposition: attachment; filename=\"%s.zip\"\r\n\r\n", inputDirectory))

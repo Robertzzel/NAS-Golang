@@ -38,7 +38,7 @@
         }
         .file-list {
             overflow-y: auto;
-            height: 70vh;
+            height: 60vh;
             list-style: none;
             padding: 0;
             margin: 0;
@@ -107,7 +107,6 @@
             all: unset;
             cursor: pointer; /* Optional: retains pointer behavior */
         }
-        #hea
     </style>
 </head>
 <body onload="OnPageLoad()">
@@ -184,7 +183,7 @@
         }
 
         async function UpdateServerFiles() {
-            let files = await fetch(`/directory?path=${encodeURIComponent(currentDirectory)}&filter=`)
+            let files = await fetch(`/directory?path=${encodeURIComponent(currentDirectory)}`)
             if(files.status !== 200) {
                 SetStatusMessage(`Error fetching files from server: ${files.status}`)
                 serverFiles = []
@@ -220,12 +219,12 @@
                 return
             }
             document.getElementById('renameModal').style.display = 'block';
-            document.getElementById('newFileName').value = oldFilepath;
+            document.getElementById('newFileName').value = currentDirectory + oldFilepath;
             document.getElementById('confirmRename').onclick = async function() {
                 CloseRenameModal()
                 const newFileName = document.getElementById('newFileName').value;
 
-                await OnRenameFile(oldFilepath, newFileName);
+                await OnRenameFile(currentDirectory + oldFilepath, newFileName);
             };
         }
 
@@ -241,9 +240,9 @@
             <li class="file-item">
                 <span>${file.Name}</span>
                 <div class="file-actions">
-                    ${file.IsDirectory ? GetDirectoryAccessButton(`${file.Name}`): ""}
+                    ${file.IsDirectory ? GetDirectoryAccessButton(file.Index): ""}
                     <button class="download">
-                        <a href="/download?path=${fileUrl}">
+                        <a href="/download?path=${encodeURIComponent(fileUrl)}">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download" viewBox="0 0 16 16">
                               <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/>
                               <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708z"/>
@@ -296,7 +295,13 @@
                 return
             }
             SetStatusMessage(`Deleting file: ${filePath}`)
-            let result = await fetch(`/delete?path=${encodeURIComponent(filePath)}`)
+            let result = await fetch(`/delete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ "path": filePath })
+            })
             if(result.status === 200){
                 let fileName = GetFileName(filePath)
                 serverFiles = serverFiles.filter(file => file.Name !== fileName)
@@ -308,13 +313,15 @@
 
         async function OnRenameFile(oldFilename, newFilename) {
             SetStatusMessage(`Renaming file: ${oldFilename} to ${newFileName}`)
-            let result = await fetch(`/rename?old=${encodeURIComponent(oldFilename)}&new=${encodeURIComponent(newFilename)}`)
+            let result = await fetch(`/rename`,{
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ "old": oldFilename, "new": newFilename })
+            })
             if(result.status === 200){
-                serverFiles.forEach(file => {
-                    if(file.Name === GetFileName(oldFilename)){
-                        file.Name = GetFileName(newFilename)
-                    }
-                })
+                await UpdateDisplayedFiles()
                 UpdateDisplayedFiles()
                 SetStatusMessage(currentDirectory)
             } else {
@@ -326,7 +333,13 @@
             const name = createDirectoryButtonElement.value
             CloseCreateDirModal()
             SetStatusMessage(`Creating directory: ${name}`)
-            let result = await fetch(`/create-directory?path=${encodeURIComponent(name)}`)
+            let result = await fetch(`/create-directory`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ "path": name })
+            })
             if(result.status === 200) {
                 serverFiles.push({Name: name, IsDirectory: true, Size: 0})
                 UpdateDisplayedFiles()
@@ -341,9 +354,9 @@
 
             const form = e.target;
             const formData = new FormData(form);
-
+            formData.append('path', currentDirectory);
             const xhr = new XMLHttpRequest();
-            xhr.open('POST', `/upload?path=${currentDirectory}`);
+            xhr.open('POST', `/upload`);
 
             let titleElement = document.getElementById('titleHeader')
             xhr.upload.onprogress = function(event) {

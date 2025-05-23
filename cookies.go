@@ -2,7 +2,7 @@ package main
 
 import (
 	"errors"
-	"strings"
+	"net/http"
 	"time"
 )
 
@@ -28,8 +28,8 @@ func (store *CookieStore) CreateCookie(username string) *Cookie {
 	return cookie
 }
 
-func (store *CookieStore) GetCookie(request *Request) (*Cookie, error) {
-	neededCookieValue := getCookieValueFromRequest(request, "drive")
+func (store *CookieStore) GetCookie(request *http.Request) (*Cookie, error) {
+	neededCookieValue := request.Header.Get("Cookie")
 	if neededCookieValue == "" {
 		return nil, errors.New("cookie not found")
 	}
@@ -46,21 +46,4 @@ func (store *CookieStore) GetCookie(request *Request) (*Cookie, error) {
 		return nil, errors.New("cookie not found")
 	}
 	return cookie, nil
-}
-
-func getCookieValueFromRequest(request *Request, name string) string {
-	cookies, cookiesExists := request.Headers["Cookie"]
-	if !cookiesExists {
-		return ""
-	}
-
-	neededCookie := ""
-	for _, cookie := range strings.Split(cookies, ";") {
-		cookieParts := strings.Split(strings.TrimSpace(cookie), "=")
-		if len(cookieParts) == 2 && cookieParts[0] == name {
-			neededCookie = cookieParts[1]
-		}
-	}
-
-	return neededCookie
 }

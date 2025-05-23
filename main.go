@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 var (
@@ -80,12 +79,12 @@ func main() {
 		}
 
 		log.Println("Accepted connection from", conn.RemoteAddr())
-		readWriter := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+		writer := bufio.NewWriter(conn)
 
-		log.Println("Parsing request...")
-		request, err := ParseRequest(readWriter)
+		br := bufio.NewReader(conn)
+
+		request, err := http.ReadRequest(br)
 		if err != nil {
-			log.Println("Request could not be parsed, closing...")
 			_ = conn.Close()
 			continue
 		}
@@ -93,34 +92,28 @@ func main() {
 		log.Println("Checking for bruteforce attempt...")
 		if bruteForceGuard.IsBruteForceAttempt(conn.RemoteAddr()) {
 			log.Println("Bruteforce detected...")
+			_ = conn.Close()
 			return
 		}
 
 		log.Println("Handleing request...")
-		HandleRequest(&request, readWriter)
+		HandleRequest(request, writer)
 
 		log.Println("Flushing and closing connection...")
-		_ = readWriter.Flush()
+		_ = writer.Flush()
 		_ = conn.Close()
 	}
 }
 
-func HandleRequest(request *Request, conn *bufio.ReadWriter) {
-	urlPath := GetUrlPath(request)
-
-	if strings.Contains(urlPath, "..") {
-		sendEmptyResponse(conn, http.StatusBadRequest)
-		return
-	}
-
-	if urlPath == "/log" {
+func HandleRequest(request *http.Request, conn *bufio.Writer) {
+	if request.URL.Path == "/log" {
 		if request.Method == "GET" {
 			log.Println("Login get route...")
 			LoginGetRoute(conn)
 			return
 		} else if request.Method == "POST" {
 			log.Println("Login post route...")
-			LoginPostRoute(conn)
+			LoginPostRoute(request, conn)
 			return
 		}
 	}
@@ -132,22 +125,22 @@ func HandleRequest(request *Request, conn *bufio.ReadWriter) {
 	}
 
 	switch true {
-	case urlPath == "/home" && request.Method == "GET":
+	case request.URL.Path == "/home" && request.Method == "GET":
 		page, _ := GetHomePageHTML()
 		sendHTMLResponse(conn, http.StatusOK, page)
-	case urlPath == "/download" && request.Method == "GET":
-		DownloadRoute(request, conn)
-	case urlPath == "/upload" && request.Method == "POST":
-		UploadRoute(request, conn)
-	case urlPath == "/directory" && request.Method == "GET":
+	case request.URL.Path == "/directory" && request.Method == "GET":
 		log.Println("Getting file structure...")
 		GetDirectoryStructureRoute(request, conn)
-	case urlPath == "/delete" && request.Method == "GET":
+	case request.URL.Path == "/delete" && request.Method == "POST":
 		DeleteRoute(request, conn)
-	case urlPath == "/create-directory" && request.Method == "GET":
-		CreateDirectoryRoute(request, conn)
-	case urlPath == "/rename" && request.Method == "GET":
+	case request.URL.Path == "/rename" && request.Method == "POST":
 		RenameRoute(request, conn)
+	case request.URL.Path == "/create-directory" && request.Method == "POST":
+		CreateDirectoryRoute(request, conn)
+	case request.URL.Path == "/download" && request.Method == "GET":
+		DownloadRoute(request, conn)
+	case request.URL.Path == "/upload" && request.Method == "POST":
+		UploadRoute(request, conn)
 	default:
 	}
 }
